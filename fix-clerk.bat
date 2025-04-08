@@ -1,0 +1,26 @@
+@echo off
+echo Fixing Clerk and Next.js compatibility...
+
+echo Stopping any running Node.js processes...
+taskkill /f /im node.exe 2>NUL
+
+echo Removing node_modules folder...
+rmdir /s /q node_modules
+
+echo Removing package-lock.json...
+del package-lock.json
+
+echo Removing .next folder...
+rmdir /s /q .next
+
+echo Clearing npm cache...
+npm cache clean --force
+
+echo Installing specific compatible versions...
+npm install --save-exact @clerk/nextjs@4.31.8 next@14.0.4
+
+echo Installing remaining dependencies...
+npm install
+
+echo Next.js and Clerk compatibility fixed!
+echo You can now run 'npm run dev' to start the development server.

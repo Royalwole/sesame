@@ -1,0 +1,26 @@
+@echo off
+echo Fixing Next.js installation...
+
+echo Stopping any running Node.js processes...
+taskkill /f /im node.exe
+
+echo Removing node_modules folder...
+rmdir /s /q node_modules
+
+echo Removing package-lock.json...
+del package-lock.json
+
+echo Removing .next folder...
+rmdir /s /q .next
+
+echo Clearing npm cache...
+npm cache clean --force
+
+echo Installing dependencies with exact Next.js version...
+npm install --save-exact next@14.0.4 react@18.2.0 react-dom@18.2.0
+
+echo Installing remaining dependencies...
+npm install
+
+echo Next.js installation fixed!
+echo You can now run 'npm run dev' to start the development server.

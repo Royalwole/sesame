@@ -1,0 +1,122 @@
+import React from "react";
+import Link from "next/link";
+import { FiHome, FiMapPin, FiBed, FiBath } from "react-icons/fi";
+
+/**
+ * Functional component that maps over a list of listings
+ * @param {Array} listings - Array of listing objects to map over
+ * @param {Object} options - Display options
+ * @returns {JSX.Element} - Rendered list of listings
+ */
+export default function ListingMap({
+  listings = [],
+  emptyMessage = "No listings found",
+  className = "",
+  showLocation = true,
+  showPrice = true,
+  compact = false,
+}) {
+  // If no listings, show empty message
+  if (!listings || listings.length === 0) {
+    return (
+      <div className={`py-8 text-center ${className}`}>
+        <FiHome className="mx-auto h-10 w-10 text-gray-400 mb-2" />
+        <p className="text-gray-500">{emptyMessage}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`listing-map ${className}`}>
+      <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {listings.map((listing) => (
+          <li
+            key={listing._id}
+            className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
+          >
+            <Link href={`/listings/${listing._id}`} className="block">
+              {/* Listing image */}
+              <div className="relative aspect-[4/3] bg-gray-200">
+                {listing.images && listing.images[0] ? (
+                  <img
+                    src={listing.images[0].url}
+                    alt={listing.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <FiHome className="text-gray-400 text-4xl" />
+                  </div>
+                )}
+
+                {/* Status badge */}
+                {listing.status && (
+                  <div className="absolute top-2 right-2">
+                    <span
+                      className={`inline-block px-2 py-1 text-xs font-semibold rounded-md ${
+                        listing.status === "published"
+                          ? "bg-green-100 text-green-800"
+                          : listing.status === "pending"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}
+                    >
+                      {listing.status === "published"
+                        ? "Active"
+                        : listing.status === "pending"
+                        ? "Pending"
+                        : listing.status}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Listing details */}
+              <div className="p-4">
+                <h3 className="font-semibold text-lg mb-1 line-clamp-1">
+                  {listing.title}
+                </h3>
+
+                {/* Price */}
+                {showPrice && (
+                  <p className="text-wine font-bold mb-2">
+                    ₦{listing.price?.toLocaleString() || 0}
+                    {listing.listingType === "rent" && (
+                      <span className="text-sm font-normal text-gray-500">
+                        /month
+                      </span>
+                    )}
+                  </p>
+                )}
+
+                {/* Features */}
+                {!compact && (
+                  <div className="flex items-center space-x-4 mb-2 text-sm text-gray-500">
+                    {listing.bedrooms !== undefined && (
+                      <span className="flex items-center">
+                        <FiBed className="mr-1" /> {listing.bedrooms}
+                      </span>
+                    )}
+                    {listing.bathrooms !== undefined && (
+                      <span className="flex items-center">
+                        <FiBath className="mr-1" /> {listing.bathrooms}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Location */}
+                {showLocation && listing.address && (
+                  <div className="flex items-start text-sm text-gray-500">
+                    <FiMapPin className="mr-1 mt-1 flex-shrink-0" />
+                    <span className="line-clamp-1">{listing.address}</span>
+                  </div>
+                )}
+              </div>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
