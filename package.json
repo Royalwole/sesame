@@ -19,7 +19,7 @@
     "e2e:headless": "start-server-and-test dev http://localhost:3000 cypress:headless",
     "analyze": "ANALYZE=true next build",
     "format": "prettier --write .",
-    "prepare": "husky install",
+    "prepare": "node scripts/check-git.js",
     "create-dirs": "mkdir -p public/images public/fonts tests/components tests/pages tests/api",
     "fix-deps": "node scripts/fix-dependencies.js",
     "clean-install": "npm run fix-deps",
