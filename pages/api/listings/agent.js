@@ -2,7 +2,6 @@ import { connectDB, disconnectDB } from "../../../lib/db";
 import Listing from "../../../models/Listing";
 import User from "../../../models/User";
 import { getAuth } from "@clerk/nextjs/server";
-import { withErrorHandling } from "../../../lib/api-utils";
 import {
   sendSuccess,
   sendError,

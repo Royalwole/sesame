@@ -9,14 +9,14 @@ import AuthDebugger from "../components/utils/AuthDebugger";
 const inter = Inter({ subsets: ["latin"] });
 
 export default function Home() {
-  // Featured property images - keeping your existing URLs
+  // Restoring original featured property images
   const featuredImages = [
     "https://www.resolutionlawng.com/wp-content/uploads/2020/09/house-in-Nigeria-image-1.jpeg",
     "https://naijalandlord.com/wp-content/uploads/2024/12/IMG-20241217-WA0933-1170x785.jpg",
     "https://images.adsttc.com/media/images/642d/94aa/aa1b/8007/8c6a/da64/slideshow/the-lantern-house-cmdesign-atelier_6.jpg?1680708817",
   ];
 
-  // Property categories with our existing images
+  // Property categories with original images
   const categories = [
     {
       title: "Residential",
@@ -54,6 +54,7 @@ export default function Home() {
               alt="Modern real estate in Nigeria"
               fill
               priority
+              sizes="100vw"
               className="object-cover brightness-[0.7]"
             />
           </div>
@@ -130,6 +131,7 @@ export default function Home() {
                       src={category.image}
                       alt={`${category.title} Properties`}
                       fill
+                      sizes="100vw"
                       className="object-cover"
                     />
                   </div>
@@ -178,6 +180,7 @@ export default function Home() {
                       src={image}
                       alt={`Featured property ${idx + 1}`}
                       fill
+                      sizes="100vw"
                       className="object-cover"
                     />
                     <div className="absolute top-0 right-0 bg-wine text-white px-3 py-1 m-4 rounded">
@@ -214,8 +217,8 @@ export default function Home() {
                         {idx === 0
                           ? "Lagos"
                           : idx === 1
-                          ? "Abuja"
-                          : "Port Harcourt"}
+                            ? "Abuja"
+                            : "Port Harcourt"}
                         , Nigeria
                       </span>
                     </div>

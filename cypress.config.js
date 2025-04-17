@@ -1,10 +1,10 @@
-const { defineConfig } = require('cypress');
+const { defineConfig } = require("cypress");
 
 module.exports = defineConfig({
   e2e: {
-    baseUrl: 'http://localhost:3000',
-    setupNodeEvents(on, config) {
-      // implement node event listeners here
+    baseUrl: "http://localhost:3000",
+    setupNodeEvents() {
+      // implement node event listeners here if needed
     },
     defaultCommandTimeout: 10000,
     viewportWidth: 1280,
@@ -14,13 +14,13 @@ module.exports = defineConfig({
   },
   component: {
     devServer: {
-      framework: 'next',
-      bundler: 'webpack',
+      framework: "next",
+      bundler: "webpack",
     },
-    specPattern: 'cypress/component/**/*.cy.{js,jsx,ts,tsx}',
+    specPattern: "cypress/component/**/*.cy.{js,jsx,ts,tsx}",
   },
   env: {
-    apiUrl: 'http://localhost:3000/api',
+    apiUrl: "http://localhost:3000/api",
   },
   retries: {
     runMode: 2,

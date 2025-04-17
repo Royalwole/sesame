@@ -6,7 +6,10 @@
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
-require("dotenv").config({ path: path.resolve(process.cwd(), ".env.local") });
+const dotenv = require("dotenv");
+
+// Load environment variables
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 // Log current environment
 console.log("Environment:");

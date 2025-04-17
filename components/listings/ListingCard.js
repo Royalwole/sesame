@@ -6,13 +6,13 @@ import { useInView } from "react-intersection-observer"; // Add for lazy loading
 
 export default function ListingCard({ listing }) {
   const [imageError, setImageError] = useState(false);
-  
+
   // Add intersection observer for lazy loading
   const { ref, inView } = useInView({
     triggerOnce: true,
-    rootMargin: '200px 0px', // Load images 200px before they come into view
+    rootMargin: "200px 0px", // Load images 200px before they come into view
   });
-  
+
   // Safety check for null or undefined listing
   if (!listing) return null;
 
@@ -36,27 +36,31 @@ export default function ListingCard({ listing }) {
   }).format(price);
 
   // Format location with proper fallbacks
-  const locationText = location?.city && location?.state
-    ? `${location.city}, ${location.state}`
-    : location?.city || location?.state || "Location unavailable";
+  const locationText =
+    location?.city && location?.state
+      ? `${location.city}, ${location.state}`
+      : location?.city || location?.state || "Location unavailable";
 
   // Get image URL with fallback and CDN optimization
-  const imageUrl = images && images.length > 0 && !imageError ? optimizeImageUrl(images[0]) : null;
+  const imageUrl =
+    images && images.length > 0 && !imageError
+      ? optimizeImageUrl(images[0])
+      : null;
 
   // Function to optimize image URLs for CDN
   function optimizeImageUrl(url) {
     if (!url) return null;
-    
+
     // If it's already a CDN URL, return it
-    if (url.includes('imagedelivery.net') || url.includes('topdial-cdn')) {
+    if (url.includes("imagedelivery.net") || url.includes("topdial-cdn")) {
       return url;
     }
-    
+
     // If it's a local URL, keep it as is
-    if (url.startsWith('/')) {
+    if (url.startsWith("/")) {
       return url;
     }
-    
+
     // For demo purposes: if this was a real app, we would transform the URL to a CDN format
     // Example: return `https://topdial-cdn.azureedge.net/properties/${encodeURIComponent(url)}`;
     return url;
@@ -64,7 +68,10 @@ export default function ListingCard({ listing }) {
 
   return (
     <Link href={`/listings/${_id}`} className="block h-full">
-      <div ref={ref} className="bg-white rounded-lg shadow-sm overflow-hidden h-full transition-shadow hover:shadow-md">
+      <div
+        ref={ref}
+        className="bg-white rounded-lg shadow-sm overflow-hidden h-full transition-shadow hover:shadow-md"
+      >
         {/* Image with proper error handling, lazy loading and WebP optimization */}
         <div className="relative h-48 bg-gray-100 overflow-hidden">
           {imageUrl && inView ? (
@@ -75,7 +82,7 @@ export default function ListingCard({ listing }) {
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               className="object-cover transition-transform hover:scale-105"
               onError={() => setImageError(true)}
-              loading="lazy" 
+              loading="lazy"
               quality={80} // Optimize quality for balance of size and appearance
               placeholder="blur"
               blurDataURL="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23f1f5f9'/%3E%3C/svg%3E"
@@ -85,7 +92,7 @@ export default function ListingCard({ listing }) {
               <FiHome size={48} className="text-gray-400" />
             </div>
           )}
-          
+
           {/* Price tag overlay */}
           <div className="absolute bottom-0 left-0 bg-blue-600 text-white px-3 py-1 font-medium">
             {formattedPrice}
@@ -94,7 +101,9 @@ export default function ListingCard({ listing }) {
 
         {/* Content */}
         <div className="p-4">
-          <h3 className="font-medium text-lg text-gray-900 line-clamp-1">{title}</h3>
+          <h3 className="font-medium text-lg text-gray-900 line-clamp-1">
+            {title}
+          </h3>
 
           <div className="flex items-center text-gray-600 text-sm mb-3 mt-2">
             <FiMapPin size={14} className="mr-1 flex-shrink-0" />

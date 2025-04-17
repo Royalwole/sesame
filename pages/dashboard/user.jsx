@@ -17,170 +17,163 @@ export default function UserDashboardPage() {
     hasError,
     error,
   } = useAuth();
+
   const [favorites, setFavorites] = useState([]);
   const [inspections, setInspections] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loadingState, setLoadingState] = useState("authenticating"); // Centralized loading state
   const [dataError, setDataError] = useState(null);
+  const [syncAttempts, setSyncAttempts] = useState(0);
   const hasRedirected = useRef(false);
   const loadingTimeoutRef = useRef(null);
-  const [syncAttempts, setSyncAttempts] = useState(0);
 
-  // Add a debug log
-  console.log("UserDashboard render:", {
-    authLoading,
-    isAuthenticated,
-    hasDbUser: !!dbUser,
-    isFallbackUser: dbUser?.isFallback,
-    isLoading,
-    syncAttempts,
-    hasError,
-    error,
-  });
+  // Debug logging utility with timestamp
+  const logDebug = (message, data = {}) => {
+    console.log(`[${new Date().toISOString()}] ${message}`, data);
+  };
 
-  // Add safety timeout to prevent endless loading
+  // Safety timeout to prevent infinite loading
   useEffect(() => {
-    // Set a timeout to force loading to end after 5 seconds max
     loadingTimeoutRef.current = setTimeout(() => {
-      if (isLoading) {
-        console.log("Safety timeout triggered - forcing loading to end");
-        setIsLoading(false);
+      if (loadingState !== "ready") {
+        logDebug("Safety timeout triggered - forcing loading to end");
+        setLoadingState("ready");
+        setDataError("Loading took too long. Please try refreshing.");
       }
     }, 5000);
 
-    return () => {
-      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-    };
-  }, []);
+    return () => clearTimeout(loadingTimeoutRef.current);
+  }, []); // Run once on mount
 
   // Handle authentication and redirection
   useEffect(() => {
-    // Check if authentication is still loading
+    logDebug("Auth check", { authLoading, isAuthenticated, dbUser: !!dbUser });
+
     if (authLoading) {
-      console.log("Auth still loading...");
-      return; // Wait for auth to finish loading
+      setLoadingState("authenticating");
+      return;
     }
 
-    // Handle not authenticated case
     if (!isAuthenticated && !hasRedirected.current) {
-      console.log("Redirecting unauthenticated user to sign-in");
+      logDebug("Redirecting unauthenticated user to sign-in");
       hasRedirected.current = true;
       router.push(
         `/auth/sign-in?redirect_url=${encodeURIComponent("/dashboard/user")}`
       );
+      setLoadingState("redirecting");
       return;
     }
 
-    // Handle authenticated case
     if (isAuthenticated) {
-      console.log(
-        "User is authenticated - dbUser present:",
-        !!dbUser,
-        "fallback:",
-        dbUser?.isFallback || false
-      );
+      logDebug("User authenticated", {
+        hasDbUser: !!dbUser,
+        isFallback: dbUser?.isFallback,
+      });
       fetchDashboardData();
     }
-  }, [authLoading, isAuthenticated, dbUser]);
+  }, [authLoading, isAuthenticated, dbUser, router]); // Proper dependencies
 
-  // Function to handle manual sync of user data
-  const handleSyncUserData = async () => {
-    setSyncAttempts((prev) => prev + 1);
-    try {
-      setIsLoading(true);
-      console.log("Manually syncing user data...");
-      await syncUserData(); // Call the syncUserData function from AuthContext
-
-      // Short delay to allow state to update
+  // Fetch mock dashboard data
+  const fetchMockDashboardData = () => {
+    return new Promise((resolve) => {
       setTimeout(() => {
-        setIsLoading(false);
-      }, 1000);
-    } catch (err) {
-      console.error("Error syncing user data:", err);
-      setIsLoading(false);
-    }
+        resolve({
+          favorites: [
+            {
+              id: "1",
+              title: "Modern 3 Bedroom Apartment",
+              location: "Lagos",
+              price: 250000,
+              image: "/images/sample-property-1.jpg",
+            },
+            {
+              id: "2",
+              title: "Spacious 4 Bedroom Villa",
+              location: "Abuja",
+              price: 450000,
+              image: "/images/sample-property-2.jpg",
+            },
+          ],
+          inspections: [
+            {
+              id: "insp1",
+              propertyId: "1",
+              propertyTitle: "Modern 3 Bedroom Apartment",
+              date: new Date(Date.now() + 86400000).toISOString(),
+              status: "scheduled",
+            },
+          ],
+        });
+      }, 500);
+    });
   };
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
+    if (hasRedirected.current) return;
+
     try {
-      setIsLoading(true);
-      console.log("Fetching dashboard data");
+      setLoadingState("fetching");
+      logDebug("Fetching dashboard data");
 
-      // Clear any existing timeout
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-
-      // For this example, use mock data
-      setTimeout(() => {
-        if (hasRedirected.current) return; // Don't update state if redirected
-
-        setFavorites([
-          // Mock favorites data
-          {
-            id: "1",
-            title: "Modern 3 Bedroom Apartment",
-            location: "Lagos",
-            price: 250000,
-            image: "/images/sample-property-1.jpg",
-          },
-          {
-            id: "2",
-            title: "Spacious 4 Bedroom Villa",
-            location: "Abuja",
-            price: 450000,
-            image: "/images/sample-property-2.jpg",
-          },
-        ]);
-        setInspections([
-          {
-            id: "insp1",
-            propertyId: "1",
-            propertyTitle: "Modern 3 Bedroom Apartment",
-            date: new Date(Date.now() + 86400000).toISOString(), // Tomorrow
-            status: "scheduled",
-          },
-        ]);
-        setIsLoading(false);
-        console.log("Dashboard data loaded");
-      }, 500);
+      const { favorites, inspections } = await fetchMockDashboardData();
+      setFavorites(favorites);
+      setInspections(inspections);
+      setLoadingState("ready");
+      logDebug("Dashboard data loaded successfully");
     } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-      setDataError("Failed to load dashboard data. Please try again later.");
-      setIsLoading(false);
+      logDebug("Error fetching dashboard data", { error: err.message });
+      setDataError("Failed to load dashboard data. Please try again.");
+      setLoadingState("ready");
     }
   };
 
-  // Handle sign out and retry
+  // Manual sync with retry limit and backoff
+  const handleSyncUserData = async () => {
+    if (syncAttempts >= 3) {
+      logDebug("Sync attempts exhausted");
+      return;
+    }
+
+    setSyncAttempts((prev) => prev + 1);
+    setLoadingState("syncing");
+    try {
+      logDebug("Manually syncing user data", { attempt: syncAttempts + 1 });
+      await syncUserData();
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate delay
+      fetchDashboardData(); // Refresh data after sync
+    } catch (err) {
+      logDebug("Error syncing user data", { error: err.message });
+      setDataError("Sync failed. Try again or sign out.");
+      setLoadingState("ready");
+    }
+  };
+
+  // Sign out and retry
   const handleSignOutAndRetry = async () => {
     try {
+      logDebug("Signing out and retrying");
       const { signOut } = useAuth();
       await signOut();
       router.push("/auth/sign-in?redirect_url=/dashboard/user&restore=1");
     } catch (err) {
-      console.error("Error signing out:", err);
-      // Force reload as fallback
-      window.location.href = "/auth/sign-in";
+      logDebug("Error signing out", { error: err.message });
+      window.location.href = "/auth/sign-in"; // Fallback
     }
   };
 
-  // Show loader while auth is being determined
-  if (authLoading) {
+  // Loading states
+  if (loadingState === "authenticating") {
     return <Loader message="Verifying your account..." />;
   }
-
-  // Show loader while redirecting
-  if (!isAuthenticated && hasRedirected.current) {
+  if (loadingState === "redirecting") {
     return <Loader message="Redirecting to sign in..." />;
   }
-
-  // If authenticated but data is loading, show loading state
-  if (isAuthenticated && isLoading) {
+  if (loadingState === "fetching" || loadingState === "syncing") {
     return <Loader message="Loading your dashboard..." />;
   }
 
-  // Force render even without complete dbUser in case of auth issues
-  if (isAuthenticated && (!dbUser || dbUser.isFallback) && !isLoading) {
+  // Incomplete setup state
+  if (isAuthenticated && (!dbUser || dbUser.isFallback)) {
     return (
       <>
         <Head>
@@ -215,25 +208,22 @@ export default function UserDashboardPage() {
               </div>
 
               <p className="text-gray-600 mb-4">
-                Your profile information is still being synchronized. This may
-                happen due to:
+                Your profile information is still being synchronized due to:
               </p>
 
               <ul className="list-disc pl-5 mb-6 text-gray-600">
-                <li>Your account was just created and is being set up</li>
-                <li>There may be a temporary database connection issue</li>
-                <li>Your browser session needs to be refreshed</li>
+                <li>Recent account creation</li>
+                <li>Temporary database connection issues</li>
+                <li>Browser session needing refresh</li>
               </ul>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className="border border-gray-200 rounded-lg p-4">
-                  <h3 className="font-medium mb-1">
-                    Try these quick solutions:
-                  </h3>
+                  <h3 className="font-medium mb-1">Quick Solutions:</h3>
                   <ol className="list-decimal pl-5 text-sm text-gray-600 space-y-2">
-                    <li>Wait a few seconds and refresh the page</li>
-                    <li>Use the "Sync User Data" button to retry</li>
-                    <li>If problems persist, sign out and sign in again</li>
+                    <li>Refresh the page after a few seconds</li>
+                    <li>Click "Sync User Data" to retry</li>
+                    <li>Sign out and sign in if issues persist</li>
                   </ol>
                 </div>
 
@@ -245,11 +235,11 @@ export default function UserDashboardPage() {
                       {dbUser?.lastName || ""}
                     </p>
                     <p>
-                      <strong>Profile Status:</strong>{" "}
+                      <strong>Status:</strong>{" "}
                       {hasError ? "Error" : "Setting Up"}
                     </p>
                     <p>
-                      <strong>Sync Attempts:</strong> {syncAttempts}
+                      <strong>Sync Attempts:</strong> {syncAttempts}/3
                     </p>
                     {error && (
                       <p className="text-red-600">
@@ -267,7 +257,6 @@ export default function UserDashboardPage() {
                 >
                   Refresh Page
                 </button>
-
                 <button
                   onClick={handleSyncUserData}
                   disabled={syncAttempts >= 3}
@@ -277,20 +266,16 @@ export default function UserDashboardPage() {
                       : "bg-green-500 hover:bg-green-600"
                   } text-white rounded transition-colors`}
                 >
-                  {syncAttempts >= 3
-                    ? "Sync Attempts Exhausted"
-                    : "Sync User Data"}
+                  Sync User Data
                 </button>
-
                 {syncAttempts >= 2 && (
                   <button
                     onClick={handleSignOutAndRetry}
                     className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
                   >
-                    Sign Out & Sign In Again
+                    Sign Out & Retry
                   </button>
                 )}
-
                 <Link
                   href="/"
                   className="px-4 py-2 bg-gray-200 text-center text-gray-800 rounded hover:bg-gray-300 transition-colors"
@@ -304,8 +289,8 @@ export default function UserDashboardPage() {
                   <p>
                     Sync attempt {syncAttempts}/3.{" "}
                     {syncAttempts >= 3
-                      ? "Maximum attempts reached. Try signing out and signing in again."
-                      : "Trying to synchronize your account data..."}
+                      ? "Max attempts reached. Please sign out and retry."
+                      : "Retrying synchronization..."}
                   </p>
                 </div>
               )}
@@ -316,12 +301,12 @@ export default function UserDashboardPage() {
     );
   }
 
-  // Error state for dashboard data
+  // Error state
   if (dataError) {
     return <ErrorMessage message={dataError} onRetry={fetchDashboardData} />;
   }
 
-  // Render dashboard when everything is ready
+  // Render dashboard
   return (
     <>
       <Head>

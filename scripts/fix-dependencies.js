@@ -65,3 +65,60 @@ setTimeout(() => {
     "2. If issues persist, try restarting your computer and running this script again"
   );
 }, 2000);
+
+/**
+ * Script to ensure all required dependencies are installed
+ */
+
+console.log("=== TopDial Dependency Fixer ===\n");
+
+// Required packages that might be missing
+const requiredPackages = ["micro", "react-intersection-observer", "lru-cache"];
+
+// Read package.json to check installed dependencies
+function getInstalledPackages() {
+  try {
+    const packageJsonPath = path.join(process.cwd(), "package.json");
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    return {
+      dependencies: packageJson.dependencies || {},
+      devDependencies: packageJson.devDependencies || {},
+    };
+  } catch (error) {
+    console.error("Error reading package.json:", error);
+    return { dependencies: {}, devDependencies: {} };
+  }
+}
+
+// Install missing packages
+function installMissingPackages() {
+  const { dependencies, devDependencies } = getInstalledPackages();
+  const allDependencies = { ...dependencies, ...devDependencies };
+
+  const missingPackages = requiredPackages.filter(
+    (pkg) => !allDependencies[pkg]
+  );
+
+  if (missingPackages.length === 0) {
+    console.log("✅ All required packages are already installed.");
+    return true;
+  }
+
+  console.log(`Missing packages: ${missingPackages.join(", ")}`);
+  console.log("\nInstalling missing packages...");
+
+  try {
+    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+    execSync(`${npmCommand} install ${missingPackages.join(" ")}`, {
+      stdio: "inherit",
+    });
+    console.log("\n✅ Missing packages installed successfully!");
+    return true;
+  } catch (error) {
+    console.error("\n❌ Failed to install packages:", error.message);
+    return false;
+  }
+}
+
+// Run the main function
+installMissingPackages();

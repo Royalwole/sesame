@@ -7,7 +7,7 @@ export default function AuthPage() {
   const { pathname, query } = router;
   const { signOut } = useClerk();
 
-  const redirectUrl = query.redirect_url || "/";
+  const redirectTo = query.redirect_url || "/";
 
   // Handle sign-in and all its subpaths
   if (pathname.includes("/sign-in") || pathname === "/auth") {
@@ -22,7 +22,7 @@ export default function AuthPage() {
             path="/auth/sign-in"
             routing="path"
             signUpUrl="/auth/sign-up"
-            redirectUrl={redirectUrl} // Keep using redirectUrl for now for compatibility
+            afterSignInUrl={redirectTo} // Updated from redirectUrl to afterSignInUrl
           />
         </div>
       </>
@@ -42,7 +42,7 @@ export default function AuthPage() {
             path="/auth/sign-up"
             routing="path"
             signInUrl="/auth/sign-in"
-            redirectUrl={redirectUrl} // Keep using redirectUrl for now for compatibility
+            afterSignUpUrl={redirectTo} // Updated from redirectUrl to afterSignUpUrl
             appearance={{
               elements: {
                 rootBox: "mx-auto w-full",

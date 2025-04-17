@@ -1,12 +1,5 @@
 import { connectDB, disconnectDB } from "../../../lib/db";
 import Listing from "../../../models/Listing";
-import {
-  createRateLimiter,
-  applyRateLimitHeaders,
-} from "../../../lib/api/rateLimit";
-import { withCache, invalidateCache } from "../../../lib/api/cache";
-import { validateListingQuery } from "../../../lib/validation";
-import { handleApiError } from "../../../lib/errorHandler";
 
 // Add mock data for fallback when DB isn't ready
 const MOCK_LISTINGS = [
@@ -47,12 +40,6 @@ const MOCK_LISTINGS = [
     status: "active",
   },
 ];
-
-// Create rate limiter - 60 requests per minute
-const checkRateLimit = createRateLimiter({ limit: 60, windowMs: 60 * 1000 });
-
-// Cache configuration - 5 minutes for listing results
-const TTL = 300; // 5 minutes in seconds
 
 // Modify handler function to fix response issues
 export default async function handler(req, res) {

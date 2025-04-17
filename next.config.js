@@ -1,25 +1,64 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    esmExternals: "loose",
-    serverComponentsExternalPackages: ["mongoose"],
-  },
+
+  // External packages
+  serverExternalPackages: ["mongoose"],
+
+  experimental: {},
+
+  // Update image configuration to use remotePatterns instead of domains
   images: {
-    domains: [
-      "randomuser.me", // For mock data
-      "images.unsplash.com",
-      "cloudinary.com",
-      "res.cloudinary.com",
-      "www.resolutionlawng.com",
-      "naijalandlord.com",
-      "images.adsttc.com",
-      "localhost",
-      "ud6qd8lqw90591bz.public.blob.vercel-storage.com",
-      "example.com",
-      // Add CDN domains
-      "imagedelivery.net",
-      "topdial-cdn.azureedge.net",
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "randomuser.me",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "www.resolutionlawng.com",
+      },
+      {
+        protocol: "https",
+        hostname: "naijalandlord.com",
+      },
+      {
+        protocol: "https",
+        hostname: "images.adsttc.com",
+      },
+      {
+        protocol: "http",
+        hostname: "localhost",
+      },
+      {
+        protocol: "https",
+        hostname: "ud6qd8lqw90591bz.public.blob.vercel-storage.com",
+      },
+      {
+        protocol: "https",
+        hostname: "example.com",
+      },
+      {
+        protocol: "https",
+        hostname: "imagedelivery.net",
+      },
+      {
+        protocol: "https",
+        hostname: "topdial-cdn.azureedge.net",
+      },
     ],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
@@ -28,6 +67,8 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
+
+  // Keep redirects configuration
   async redirects() {
     return [
       {
@@ -52,6 +93,8 @@ const nextConfig = {
       },
     ];
   },
+
+  // Keep webpack configuration
   webpack: (config, { isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -84,7 +127,7 @@ const nextConfig = {
     return config;
   },
 
-  // Add security headers
+  // Keep security headers
   async headers() {
     return [
       {
@@ -144,10 +187,7 @@ const nextConfig = {
     ];
   },
 
-  // Fix: Remove deprecated or unnecessary options
-  swcMinify: true,
-
-  // Enhance compiler options
+  // Keep compiler options
   compiler: {
     // Only remove console in production
     removeConsole:
@@ -158,10 +198,10 @@ const nextConfig = {
         : false,
   },
 
-  // Use source maps only in development
+  // Keep source maps configuration
   productionBrowserSourceMaps: false,
 
-  // Configure CORS and other security settings
+  // Keep CORS configuration
   async rewrites() {
     return {
       beforeFiles: [

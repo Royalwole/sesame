@@ -1,169 +1,232 @@
 import { useState, useEffect } from "react";
 import Head from "next/head";
-import { useUser } from "@clerk/nextjs";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../../contexts/AuthContext";
+import { useUser, useClerk } from "@clerk/nextjs";
 
-export default function AuthStatus() {
-  const { user } = useUser();
-  const { isAgent, isAdmin, dbUser, isLoading } = useAuth();
-  const [apiStatus, setApiStatus] = useState(null);
-  const [loading, setLoading] = useState(false);
+export default function AuthStatusPage() {
+  const {
+    isAuthenticated,
+    dbUser,
+    isLoading,
+    lastSynced,
+    syncUserData,
+    hasError,
+    error,
+  } = useAuth();
+  const { user, isSignedIn, isLoaded } = useUser();
+  const { session } = useClerk();
 
-  const checkAgentStatus = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/debug/check-agent-status");
-      const data = await res.json();
-      setApiStatus(data);
-    } catch (err) {
-      console.error(err);
-      setApiStatus({ error: err.message });
-    } finally {
-      setLoading(false);
-    }
+  const [syncing, setSyncing] = useState(false);
+  const [detailsVisible, setDetailsVisible] = useState(false);
+
+  // Function to handle manual sync
+  const handleSync = async () => {
+    setSyncing(true);
+    await syncUserData();
+    setSyncing(false);
   };
 
-  // Only for development environment
-  if (process.env.NODE_ENV !== "development") {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4">
-          <p className="text-yellow-800">
-            This debug tool is only available in development mode
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="container mx-auto px-4 py-8">
+    <>
       <Head>
-        <title>Auth Status Debugger</title>
+        <title>Auth Status - TopDial Debug</title>
       </Head>
 
-      <h1 className="text-2xl font-bold mb-6">
-        Authentication Status Debugger
-      </h1>
+      <div className="container mx-auto p-4">
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Authentication Status</h1>
+            <button
+              onClick={handleSync}
+              disabled={syncing || isLoading}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+            >
+              {syncing ? "Syncing..." : "Sync User Data"}
+            </button>
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-4">
-            Client-Side Auth Status
-          </h2>
-
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-wine border-t-transparent"></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="border rounded p-4">
+              <div className="text-sm text-gray-500">Clerk Status</div>
+              <div
+                className={`text-xl font-medium ${isLoaded ? (isSignedIn ? "text-green-600" : "text-red-600") : "text-yellow-600"}`}
+              >
+                {!isLoaded
+                  ? "Loading..."
+                  : isSignedIn
+                    ? "Authenticated"
+                    : "Not Authenticated"}
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-medium text-gray-700">Authentication:</h3>
-                <p>{user ? "✅ Authenticated" : "❌ Not authenticated"}</p>
-              </div>
 
-              <div>
-                <h3 className="font-medium text-gray-700">User ID:</h3>
-                <p className="font-mono text-sm">
-                  {user?.id || "Not available"}
-                </p>
+            <div className="border rounded p-4">
+              <div className="text-sm text-gray-500">Database User</div>
+              <div
+                className={`text-xl font-medium ${isLoading ? "text-yellow-600" : dbUser ? "text-green-600" : "text-red-600"}`}
+              >
+                {isLoading
+                  ? "Loading..."
+                  : dbUser
+                    ? dbUser.isFallback
+                      ? "Fallback Data"
+                      : "Synchronized"
+                    : "Not Found"}
               </div>
+            </div>
 
-              <div>
-                <h3 className="font-medium text-gray-700">Email:</h3>
-                <p>
-                  {user?.primaryEmailAddress?.emailAddress || "Not available"}
-                </p>
+            <div className="border rounded p-4">
+              <div className="text-sm text-gray-500">User Role</div>
+              <div className="text-xl font-medium">
+                {dbUser?.role
+                  ? dbUser.role.charAt(0).toUpperCase() + dbUser.role.slice(1)
+                  : "N/A"}
               </div>
+            </div>
+          </div>
 
-              <div>
-                <h3 className="font-medium text-gray-700">Roles:</h3>
-                <div className="space-x-2">
-                  <span
-                    className={`inline-block px-2 py-1 text-xs rounded ${
-                      isAdmin
-                        ? "bg-purple-100 text-purple-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    Admin: {isAdmin ? "Yes" : "No"}
-                  </span>
-                  <span
-                    className={`inline-block px-2 py-1 text-xs rounded ${
-                      isAgent
-                        ? "bg-blue-100 text-blue-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    Agent: {isAgent ? "Yes" : "No"}
-                  </span>
+          {hasError && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+              <div className="flex">
+                <div>
+                  <p className="font-bold text-red-700">Error</p>
+                  <p className="text-sm text-red-600">{error}</p>
                 </div>
               </div>
+            </div>
+          )}
 
-              <div>
-                <h3 className="font-medium text-gray-700">DB User Info:</h3>
-                {dbUser ? (
-                  <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto">
-                    {JSON.stringify(
-                      {
-                        id: dbUser._id,
-                        role: dbUser.role,
-                        approved: dbUser.approved,
-                        firstName: dbUser.firstName,
-                        lastName: dbUser.lastName,
-                      },
-                      null,
-                      2
-                    )}
-                  </pre>
-                ) : (
-                  <p className="text-orange-500">No DB user data available</p>
-                )}
+          {dbUser && (
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold mb-3">User Information</h2>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        Full Name
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {dbUser.firstName} {dbUser.lastName}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        Email
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {dbUser.email}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        Role
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {dbUser.role}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        User ID
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {dbUser._id || "N/A"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        Clerk ID
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {dbUser.clerkId}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        Last Synced
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {lastSynced
+                          ? new Date(lastSynced).toLocaleString()
+                          : "Never"}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 bg-gray-50">
+                        Data Source
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {dbUser.isFallback ? "Clerk (Fallback)" : "Database"}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
 
-          <button
-            className="mt-6 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-            onClick={() => window.location.reload()}
-          >
-            Refresh Page
-          </button>
-        </div>
+          <div className="border-t pt-4">
+            <button
+              onClick={() => setDetailsVisible(!detailsVisible)}
+              className="text-blue-600 hover:text-blue-800"
+            >
+              {detailsVisible
+                ? "Hide Technical Details"
+                : "Show Technical Details"}
+            </button>
 
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-lg font-semibold mb-4">
-            Server-Side Auth Status
-          </h2>
-
-          <button
-            className="mb-4 bg-wine text-white px-4 py-2 rounded hover:bg-opacity-90 disabled:opacity-50"
-            onClick={checkAgentStatus}
-            disabled={loading}
-          >
-            {loading ? "Checking..." : "Check Agent Status from API"}
-          </button>
-
-          {apiStatus && (
-            <div className="mt-4 border rounded">
-              <div
-                className={`p-2 ${
-                  apiStatus.success ? "bg-green-100" : "bg-red-100"
-                }`}
-              >
-                <span className="font-medium">Status: </span>
-                {apiStatus.success ? "Success" : "Error"}
-              </div>
-              <div className="p-4">
-                <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto h-96">
-                  {JSON.stringify(apiStatus, null, 2)}
+            {detailsVisible && (
+              <div className="mt-4 bg-gray-50 p-4 rounded">
+                <h3 className="font-medium mb-2">Debug Information</h3>
+                <pre className="whitespace-pre-wrap text-sm overflow-auto max-h-96">
+                  {JSON.stringify(
+                    {
+                      clerk: {
+                        isLoaded,
+                        isSignedIn,
+                        user: user
+                          ? {
+                              id: user.id,
+                              firstName: user.firstName,
+                              lastName: user.lastName,
+                              email: user.primaryEmailAddress?.emailAddress,
+                            }
+                          : null,
+                        session: session
+                          ? {
+                              id: session.id,
+                              status: session.status,
+                              lastActiveAt: session.lastActiveAt,
+                              expireAt: session.expireAt,
+                            }
+                          : null,
+                      },
+                      topdial: {
+                        isAuthenticated,
+                        isLoading,
+                        hasError,
+                        error,
+                        dbUser: dbUser
+                          ? {
+                              ...dbUser,
+                              // Hide sensitive data
+                              password: dbUser.password
+                                ? "[REDACTED]"
+                                : undefined,
+                            }
+                          : null,
+                        lastSynced,
+                      },
+                    },
+                    null,
+                    2
+                  )}
                 </pre>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

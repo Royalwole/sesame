@@ -1,17 +1,20 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./pages/**/*.{js,jsx,ts,tsx}",
+    "./components/**/*.{js,jsx,ts,tsx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  // Fix: Add safelist for dynamically generated classes
   safelist: ["bg-wine", "text-wine", "border-wine", "hover:bg-wine"],
   theme: {
     extend: {
       colors: {
-        wine: "#722f37",
+        wine: {
+          light: "#f8e5e5", // A light shade
+          DEFAULT: "#8c1c13", // Main wine color - adjust to match exact shade
+          dark: "#5e130c", // A darker shade for hover states
+        },
         "wine-dark": "#5A252B",
       },
       fontFamily: {
@@ -22,14 +25,34 @@ module.exports = {
         "gradient-conic":
           "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
       },
-      // Fix: Add more screen sizes for better responsiveness
       screens: {
         xs: "475px",
-        // Tailwind defaults included automatically
       },
     },
   },
-  plugins: [require("@tailwindcss/forms"), require("@tailwindcss/typography")],
-  // Fix: Enable JIT mode explicitly for better performance
+  plugins: [
+    // Load plugins safely - only if they're installed
+    function () {
+      try {
+        return require("@tailwindcss/forms");
+      } catch (e) {
+        console.warn("[@tailwindcss/forms] plugin not installed");
+      }
+    },
+    function () {
+      try {
+        return require("@tailwindcss/typography");
+      } catch (e) {
+        console.warn("[@tailwindcss/typography] plugin not installed");
+      }
+    },
+    function () {
+      try {
+        return require("@tailwindcss/aspect-ratio");
+      } catch (e) {
+        console.warn("[@tailwindcss/aspect-ratio] plugin not installed");
+      }
+    },
+  ].filter(Boolean),
   mode: "jit",
 };

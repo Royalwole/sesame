@@ -14,7 +14,7 @@ export default function SignInPage() {
   const hasRedirected = useRef(false);
 
   // Get the redirect URL from the query string or use a default
-  const redirectUrl = router.query.redirect_url || "/dashboard";
+  const redirectTo = router.query.redirect_url || "/dashboard";
 
   // Force sign out if requested via query parameter
   const forceSignOut = router.query.force === "true";
@@ -38,26 +38,26 @@ export default function SignInPage() {
 
       // Otherwise redirect to dashboard if not already redirected
       if (!hasRedirected.current && !forceSignOut) {
-        console.log("Already signed in, redirecting to:", redirectUrl);
+        console.log("Already signed in, redirecting to:", redirectTo);
         hasRedirected.current = true;
 
         // Short delay to avoid immediate redirects
         setTimeout(() => {
-          router.replace(redirectUrl);
+          router.replace(redirectTo);
         }, 100);
       }
     } else {
       // Not signed in, show sign-in UI
       setShowSignIn(true);
     }
-  }, [isSignedIn, isLoaded, router, redirectUrl, forceSignOut, signOut]);
+  }, [isSignedIn, isLoaded, router, redirectTo, forceSignOut, signOut]);
 
   // Debug information
   useEffect(() => {
     console.log("Sign-in page state:", {
       isLoaded,
       isSignedIn,
-      redirectUrl,
+      redirectTo,
       showSignIn,
       isSigningOut,
       query: router.query,
@@ -65,7 +65,7 @@ export default function SignInPage() {
   }, [
     isLoaded,
     isSignedIn,
-    redirectUrl,
+    redirectTo,
     showSignIn,
     isSigningOut,
     router.query,
@@ -99,7 +99,7 @@ export default function SignInPage() {
               path="/auth/sign-in"
               routing="path"
               signUpUrl="/auth/sign-up"
-              redirectUrl={redirectUrl} // Keep using redirectUrl for now for compatibility
+              afterSignInUrl={redirectTo} // Updated from redirectUrl to afterSignInUrl
               appearance={{
                 elements: {
                   rootBox: "mx-auto",
@@ -130,7 +130,7 @@ export default function SignInPage() {
             </p>
             <div className="space-y-3">
               <button
-                onClick={() => router.push(redirectUrl)}
+                onClick={() => router.push(redirectTo)}
                 className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
               >
                 Continue to Dashboard
@@ -139,7 +139,7 @@ export default function SignInPage() {
                 onClick={() => {
                   router.push(
                     `/auth/sign-in?force=true&redirect_url=${encodeURIComponent(
-                      redirectUrl
+                      redirectTo
                     )}`
                   );
                 }}

@@ -1,158 +1,262 @@
-import { useEffect } from "react";
-import { useRouter } from "next/router";
-import { useAuth } from "../../../contexts/AuthContext";
-import { withAuth } from "../../../lib/withAuth"; // Add this import
+import { useState, useEffect } from "react";
+import Head from "next/head";
+import { withAuth } from "../../../lib/withAuth";
+import { AuthGuard } from "../../../lib/withAuth";
 import Link from "next/link";
-import { FiUsers, FiHome, FiSettings, FiUserCheck } from "react-icons/fi";
+import {
+  FiUsers,
+  FiHome,
+  FiList,
+  FiSettings,
+  FiDatabase,
+} from "react-icons/fi";
 
 function AdminDashboard() {
-  const router = useRouter();
-  const { user, isAdmin, isLoading } = useAuth();
+  const [stats, setStats] = useState({
+    users: 0,
+    agents: 0,
+    listings: 0,
+    pendingReviews: 0,
+  });
 
   useEffect(() => {
-    // Redirect non-admins - use isAdmin flag instead of hasRole
-    if (!isLoading && !isAdmin) {
-      router.push("/dashboard");
-      return;
-    }
-  }, [isAdmin, isLoading, router]);
+    // Fetch admin dashboard statistics
+    const fetchStats = async () => {
+      try {
+        const res = await fetch("/api/admin/stats");
+        const data = await res.json();
 
-  // If still loading, show loading state
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center py-12">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-wine border-t-transparent"></div>
-          <p className="mt-4">Loading admin dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+        if (data.success) {
+          setStats(data.stats);
+        }
+      } catch (error) {
+        console.error("Error fetching admin stats:", error);
+      }
+    };
 
-  // If not an admin, don't render anything (will redirect)
-  if (!isAdmin) {
-    return null;
-  }
-
-  const adminModules = [
-    {
-      title: "Manage Agents",
-      description: "Review and approve agent applications",
-      icon: <FiUserCheck className="text-2xl text-white" />,
-      link: "/dashboard/admin/agents",
-      color: "bg-blue-600",
-    },
-    {
-      title: "Manage Listings",
-      description: "Review and manage property listings",
-      icon: <FiHome className="text-2xl text-white" />,
-      link: "/dashboard/admin/listings",
-      color: "bg-green-600",
-    },
-    {
-      title: "Manage Users",
-      description: "View and manage user accounts",
-      icon: <FiUsers className="text-2xl text-white" />,
-      link: "/dashboard/admin/users",
-      color: "bg-purple-600",
-    },
-    {
-      title: "Site Settings",
-      description: "Configure website settings and options",
-      icon: <FiSettings className="text-2xl text-white" />,
-      link: "/dashboard/admin/settings",
-      color: "bg-gray-700",
-    },
-  ];
+    fetchStats();
+  }, []);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-      </div>
+    <AuthGuard role="admin">
+      <Head>
+        <title>Admin Dashboard | TopDial</title>
+      </Head>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-medium text-gray-800 mb-2">
-            Pending Agents
-          </h2>
-          <p className="text-3xl font-bold text-wine">2</p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+            Administrator Access
+          </span>
         </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-medium text-gray-800 mb-2">
-            Active Listings
-          </h2>
-          <p className="text-3xl font-bold text-wine">24</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-medium text-gray-800 mb-2">
-            Total Users
-          </h2>
-          <p className="text-3xl font-bold text-wine">153</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-medium text-gray-800 mb-2">
-            New Inquiries
-          </h2>
-          <p className="text-3xl font-bold text-wine">7</p>
-        </div>
-      </div>
 
-      <h2 className="text-xl font-bold mb-4">Admin Modules</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {adminModules.map((module, index) => (
-          <Link key={index} href={module.link} className="block">
-            <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="flex items-center p-6">
-                <div className={`${module.color} p-4 rounded-full mr-4`}>
-                  {module.icon}
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 rounded-md bg-blue-500 p-3 text-white">
+                  <FiUsers className="h-6 w-6" />
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold">{module.title}</h3>
-                  <p className="text-gray-600">{module.description}</p>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Total Users
+                    </dt>
+                    <dd className="text-2xl font-semibold text-gray-900">
+                      {stats.users}
+                    </dd>
+                  </dl>
                 </div>
               </div>
             </div>
-          </Link>
-        ))}
-      </div>
+          </div>
 
-      <div className="mt-8">
-        <div className="bg-gray-50 p-6 rounded-lg shadow-md">
-          <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Link
-              href="/dashboard/admin/agents"
-              className="bg-wine text-white p-3 rounded-md text-center hover:bg-opacity-90"
-            >
-              Review Agents
-            </Link>
-            <Link
-              href="/dashboard/admin/listings"
-              className="bg-wine text-white p-3 rounded-md text-center hover:bg-opacity-90"
-            >
-              Review Listings
-            </Link>
-            <Link
-              href="/debug/listings"
-              className="bg-gray-700 text-white p-3 rounded-md text-center hover:bg-opacity-90"
-            >
-              Debug Listings
-            </Link>
-            <Link
-              href="/dashboard"
-              className="bg-gray-500 text-white p-3 rounded-md text-center hover:bg-opacity-90"
-            >
-              Main Dashboard
-            </Link>
+          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 rounded-md bg-green-500 p-3 text-white">
+                  <FiUsers className="h-6 w-6" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Active Agents
+                    </dt>
+                    <dd className="text-2xl font-semibold text-gray-900">
+                      {stats.agents}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 rounded-md bg-yellow-500 p-3 text-white">
+                  <FiHome className="h-6 w-6" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Active Listings
+                    </dt>
+                    <dd className="text-2xl font-semibold text-gray-900">
+                      {stats.listings}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 rounded-md bg-red-500 p-3 text-white">
+                  <FiList className="h-6 w-6" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Pending Reviews
+                    </dt>
+                    <dd className="text-2xl font-semibold text-gray-900">
+                      {stats.pendingReviews}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white shadow-sm overflow-hidden sm:rounded-md">
+          <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">
+              Admin Actions
+            </h3>
+          </div>
+          <ul role="list" className="divide-y divide-gray-200">
+            <li>
+              <Link
+                href="/dashboard/admin/users"
+                className="block hover:bg-gray-50"
+              >
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 bg-blue-100 rounded-md p-2">
+                      <FiUsers className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        Manage Users
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        View and manage user accounts
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/dashboard/admin/agents"
+                className="block hover:bg-gray-50"
+              >
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 bg-green-100 rounded-md p-2">
+                      <FiUsers className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        Manage Agents
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Review agent applications and manage existing agents
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/dashboard/admin/listings"
+                className="block hover:bg-gray-50"
+              >
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 bg-yellow-100 rounded-md p-2">
+                      <FiHome className="h-5 w-5 text-yellow-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        Manage Listings
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Review, edit and manage property listings
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/dashboard/admin/settings"
+                className="block hover:bg-gray-50"
+              >
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 bg-purple-100 rounded-md p-2">
+                      <FiSettings className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        System Settings
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Configure application settings
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </li>
+            <li>
+              <Link href="/debug/db-status" className="block hover:bg-gray-50">
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0 bg-gray-100 rounded-md p-2">
+                      <FiDatabase className="h-5 w-5 text-gray-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        System Status
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Check database and system health
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            </li>
+          </ul>
+        </div>
       </div>
-    </div>
+    </AuthGuard>
   );
 }
 
-// Protect this page with authentication
-export const getServerSideProps = withAuth();
-
 export default AdminDashboard;
+
+// Use withAuth with role=admin to protect this page
+export const getServerSideProps = withAuth({ role: "admin" });

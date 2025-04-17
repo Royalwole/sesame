@@ -10,18 +10,34 @@ import Footer from "../components/layout/Footer";
 import "../styles/globals.css";
 import Head from "next/head";
 import NextNProgress from "nextjs-progressbar";
+import dynamic from 'next/dynamic';
 
 // Import monitoring conditionally to avoid build errors
 const initMonitoring = () => {
   if (typeof window !== "undefined") {
-    // Dynamic import to prevent build errors if package is missing
-    import("../lib/monitoring")
-      .then(({ initClientMonitoring }) => {
-        initClientMonitoring();
-      })
-      .catch((err) => {
-        console.log("Monitoring module not available", err);
+    // Use requestIdleCallback to initialize monitoring during browser idle time
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(() => {
+        import("../lib/monitoring")
+          .then(({ initClientMonitoring }) => {
+            initClientMonitoring();
+          })
+          .catch((err) => {
+            console.log("Monitoring module not available", err);
+          });
       });
+    } else {
+      // Fallback for browsers that don't support requestIdleCallback
+      setTimeout(() => {
+        import("../lib/monitoring")
+          .then(({ initClientMonitoring }) => {
+            initClientMonitoring();
+          })
+          .catch((err) => {
+            console.log("Monitoring module not available", err);
+          });
+      }, 2000); // Delay by 2 seconds to not block critical rendering
+    }
   }
 };
 
@@ -47,20 +63,23 @@ function isNoLayoutRoute(pathname) {
   );
 }
 
+// Load error fallback component dynamically
 function ErrorFallback({ error, resetErrorBoundary }) {
   // Log the error to our monitoring system - safely
   useEffect(() => {
     console.error("Application error:", error);
 
-    // Try to log to monitoring system if available
+    // Try to log to monitoring system if available - with delay to avoid blocking UI
     if (typeof window !== "undefined") {
-      import("../lib/monitoring")
-        .then(({ logClientError }) => {
-          logClientError(error, { component: "GlobalErrorBoundary" });
-        })
-        .catch(() => {
-          // Monitoring not available
-        });
+      setTimeout(() => {
+        import("../lib/monitoring")
+          .then(({ logClientError }) => {
+            logClientError(error, { component: "GlobalErrorBoundary" });
+          })
+          .catch(() => {
+            // Monitoring not available
+          });
+      }, 100);
     }
   }, [error]);
 
@@ -90,8 +109,7 @@ function ErrorFallback({ error, resetErrorBoundary }) {
           Oops! Something went wrong
         </h2>
         <p className="text-gray-600 mb-4">
-          We're sorry for the inconvenience. Our team has been notified of this
-          issue.
+          We're sorry for the inconvenience. Please try refreshing the page.
         </p>
         <div className="flex justify-center space-x-4">
           <button
@@ -115,9 +133,14 @@ function ErrorFallback({ error, resetErrorBoundary }) {
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
 
-  // Initialize monitoring safely on component mount
+  // Initialize monitoring safely on component mount with a delay
   useEffect(() => {
-    initMonitoring();
+    // Delay non-critical operations
+    const timer = setTimeout(() => {
+      initMonitoring();
+    }, 1000);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   // Use the improved route matching function
@@ -143,19 +166,7 @@ function MyApp({ Component, pageProps }) {
         }}
       >
         <Head>
-          <link rel="icon" href="/favicon.ico" />
-          <link
-            rel="icon"
-            type="image/png"
-            sizes="32x32"
-            href="/favicon-32x32.png"
-          />
-          <link
-            rel="icon"
-            type="image/png"
-            sizes="16x16"
-            href="/favicon-16x16.png"
-          />
+          <link rel="icon" href="/favicon.png" />
           <meta
             name="viewport"
             content="width=device-width, initial-scale=1.0"
@@ -164,13 +175,6 @@ function MyApp({ Component, pageProps }) {
             name="description"
             content="TopDial - Your Premier Real Estate Platform"
           />
-          <meta property="og:title" content="TopDial Real Estate" />
-          <meta
-            property="og:description"
-            content="Find your dream home with TopDial."
-          />
-          <meta property="og:type" content="website" />
-          <meta name="theme-color" content="#ffffff" />
         </Head>
 
         <NextNProgress

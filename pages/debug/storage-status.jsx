@@ -40,6 +40,34 @@ export default function StorageStatusPage() {
     }
   };
 
+  // Run Blob diagnostic test
+  const runBlobTest = async () => {
+    setTestLoading("blob-detailed");
+    try {
+      // Test connection and get detailed diagnostic info
+      const res = await fetch("/api/test/blob-diagnostic", {
+        method: "POST",
+      });
+      const data = await res.json();
+      setTestResult({
+        ...testResult,
+        blobDetailed: data,
+      });
+    } catch (err) {
+      console.error("Blob diagnostic test error:", err);
+      setTestResult({
+        ...testResult,
+        blobDetailed: {
+          success: false,
+          error: err.message,
+          clientSide: true,
+        },
+      });
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
   // Load on mount
   useEffect(() => {
     checkHealth();
@@ -207,6 +235,38 @@ export default function StorageStatusPage() {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Blob Diagnostics */}
+              <div className="mt-6">
+                <h3 className="font-medium text-lg mb-3">
+                  Vercel Blob Diagnostics
+                </h3>
+                <div className="bg-gray-50 p-4 rounded-lg border">
+                  <p className="mb-3">
+                    Run a detailed diagnostic to check Vercel Blob setup:
+                  </p>
+                  <button
+                    onClick={runBlobTest}
+                    disabled={testLoading === "blob-detailed"}
+                    className="w-full sm:w-auto px-4 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
+                  >
+                    {testLoading === "blob-detailed"
+                      ? "Running diagnostics..."
+                      : "Test Blob Configuration"}
+                  </button>
+
+                  {testResult?.blobDetailed && (
+                    <div className="mt-4">
+                      <h4 className="font-medium mb-2">Results:</h4>
+                      <div className="bg-white p-3 rounded border">
+                        <pre className="whitespace-pre-wrap text-sm overflow-auto max-h-64">
+                          {JSON.stringify(testResult.blobDetailed, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

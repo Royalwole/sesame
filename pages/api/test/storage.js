@@ -1,5 +1,5 @@
 import { connectDB, disconnectDB } from "../../../lib/db";
-import { checkBlobConnection, uploadToBlob } from "../../../lib/blob";
+import { checkBlobConnection } from "../../../lib/blob";
 
 export const config = {
   api: {

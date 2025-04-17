@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { FiAlertTriangle, FiHome } from "react-icons/fi";
 
-function ErrorPage({ statusCode, hasGetInitialPropsRun, err }) {
+function ErrorPage({ statusCode, err }) {
   useEffect(() => {
     // Log error to monitoring system
     if (err && process.env.NODE_ENV !== "development") {
@@ -52,7 +52,7 @@ function ErrorPage({ statusCode, hasGetInitialPropsRun, err }) {
 
 ErrorPage.getInitialProps = ({ res, err }) => {
   const statusCode = res ? res.statusCode : err ? err.statusCode : 404;
-  return { statusCode, hasGetInitialPropsRun: true, err };
+  return { statusCode, err };
 };
 
 export default ErrorPage;
