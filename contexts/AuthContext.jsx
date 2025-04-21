@@ -1,182 +1,257 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { useDatabaseConnection } from "./DatabaseContext";
-import { fetchJSON } from "../lib/fetchUtils";
+import { useRouter } from "next/router";
 
 // Create context
 const AuthContext = createContext();
 
-// In-memory cache to store user data briefly
-const userDataCache = {
-  data: null,
-  timestamp: null,
-  ttl: 30000, // 30 seconds
+// Cache configuration with improved TTL
+const USER_CACHE_CONFIG = {
+  storageKey: "td_user_cache",
+  ttl: 300000, // 5 minutes (increased from 1 minute)
 };
 
 // Auth provider component
 export function AuthProvider({ children }) {
+  const router = useRouter();
   const { user, isSignedIn, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const [dbUser, setDbUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastSynced, setLastSynced] = useState(null);
   const { isConnected } = useDatabaseConnection();
-  const [retryCount, setRetryCount] = useState(0);
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const MAX_RETRIES = 3;
+  const [syncAttempts, setSyncAttempts] = useState(0);
+  const MAX_SYNC_ATTEMPTS = 3;
 
-  // Helper to determine if cache is valid
-  const isValidCache = () => {
-    return userDataCache.data && 
-           userDataCache.timestamp &&
-           Date.now() - userDataCache.timestamp < userDataCache.ttl &&
-           userDataCache.data.clerkId === user?.id;
-  };
+  // Check if we should use cached user data
+  const checkCachedUser = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    
+    try {
+      const cachedData = localStorage.getItem(USER_CACHE_CONFIG.storageKey);
+      if (!cachedData) return null;
+      
+      const cached = JSON.parse(cachedData);
+      
+      // Validate cache freshness and user match
+      if (cached && 
+          cached.updatedAt && 
+          cached.clerkId === user?.id &&
+          (Date.now() - new Date(cached.updatedAt).getTime()) < USER_CACHE_CONFIG.ttl) {
+        console.log("Using valid cached user data");
+        return cached;
+      }
+    } catch (e) {
+      console.error("Error parsing cached user data:", e);
+    }
+    
+    return null;
+  }, [user?.id]);
+  
+  // Save user data to cache
+  const updateCachedUser = useCallback((userData) => {
+    if (typeof window === "undefined" || !userData) return;
+    
+    try {
+      const cacheData = {
+        ...userData,
+        updatedAt: new Date().toISOString()
+      };
+      
+      localStorage.setItem(USER_CACHE_CONFIG.storageKey, JSON.stringify(cacheData));
+    } catch (e) {
+      console.error("Error caching user data:", e);
+    }
+  }, []);
 
-  // Sync Clerk user with database user with improved error handling
+  // Create fallback user from Clerk data
+  const createFallbackUser = useCallback(() => {
+    if (!user) return null;
+    
+    return {
+      clerkId: user.id,
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      email: user.primaryEmailAddress?.emailAddress || "",
+      role: "user", // Default role
+      isFallback: true // Flag to indicate this isn't from DB
+    };
+  }, [user]);
+
+  // Handle sign out with cleanup
+  const handleSignOut = useCallback(async (redirectToSignIn = true) => {
+    try {
+      // Clear local user data
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(USER_CACHE_CONFIG.storageKey);
+      }
+      
+      setDbUser(null);
+      setError(null);
+      
+      // Sign out via Clerk
+      await signOut();
+      
+      // Redirect if needed
+      if (redirectToSignIn) {
+        const currentPath = router.asPath;
+        router.push(`/auth/sign-in?redirect_url=${encodeURIComponent(currentPath)}`);
+      }
+    } catch (e) {
+      console.error("Error during sign out:", e);
+    }
+  }, [signOut, router]);
+
+  // Sync Clerk user with database user
   const syncUserData = useCallback(async (force = false) => {
+    // Don't sync if not signed in or Clerk hasn't loaded
     if (!isSignedIn || !isLoaded) {
       setDbUser(null);
       setIsLoading(false);
-      return;
-    }
-
-    // Check cache first unless forced
-    if (!force && isValidCache()) {
-      console.log("Using cached user data");
-      setDbUser(userDataCache.data);
-      setLastSynced(new Date(userDataCache.timestamp));
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      setIsLoading(true);
       setError(null);
+      return;
+    }
 
-      // Add timestamp and random string to prevent caching issues
-      const cacheBuster = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Check cache first unless forced refresh
+    if (!force) {
+      const cachedUser = checkCachedUser();
+      if (cachedUser) {
+        setDbUser(cachedUser);
+        setLastSynced(new Date(cachedUser.updatedAt));
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    // Start loading state
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      console.log("Fetching user data from server...");
+      const cacheBuster = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
       
-      console.log(`Fetching user data (attempt ${retryCount + 1})...`);
+      // Simple fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
       
-      // Use the improved fetch utility with timeout and retries
-      const data = await fetchJSON(`/api/users/me?t=${cacheBuster}`, {
-        timeout: 10000, // 10 second timeout
-        retries: 1,      // 1 retry attempt
+      const response = await fetch(`/api/users/me?cb=${cacheBuster}`, {
+        method: "GET",
         headers: {
-          'X-Request-ID': `req_${Date.now().toString(36)}`
-        }
+          "Content-Type": "application/json",
+          "X-Request-ID": `req_${Date.now().toString(36)}`
+        },
+        credentials: "include",
+        signal: controller.signal
       });
       
-      if (data?.success && data?.user) {
-        console.log(`User data loaded successfully with role: ${data.user.role}`);
-        
-        // Update cache
-        userDataCache.data = data.user;
-        userDataCache.timestamp = Date.now();
-        
-        setDbUser(data.user);
-        setLastSynced(new Date());
-        
-        // Reset counters on success
-        setRetryCount(0);
-        setFailedAttempts(0);
-      } else {
-        console.warn("API returned success: false or missing user data:", data?.error || "No data");
-        setFailedAttempts(prev => prev + 1);
-        createFallbackUser(data?.error || "User data missing");
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
       }
+      
+      const data = await response.json();
+      
+      if (!data?.success || !data?.user) {
+        throw new Error(data?.error || "Invalid response format");
+      }
+      
+      // Success - update user data and cache
+      console.log("User data loaded successfully:", data.user.role);
+      setDbUser(data.user);
+      setLastSynced(new Date());
+      updateCachedUser(data.user);
+      setSyncAttempts(0);
+      
     } catch (err) {
       console.error("Error syncing user data:", err);
-      setError(err.message);
-      setFailedAttempts(prev => prev + 1);
       
-      // Implement retry logic for network errors or 5xx responses
-      if (retryCount < MAX_RETRIES && 
-         (err.message.includes("Failed to fetch") || err.message.includes("Server responded with 5") || err.message.includes("timed out"))) {
-        console.log(`Retry attempt ${retryCount + 1} of ${MAX_RETRIES} in 2 seconds...`);
-        setRetryCount(count => count + 1);
+      // Improved error categorization
+      if (err.name === 'AbortError') {
+        console.error("Request timed out");
+        setError("Connection timed out. Please try again.");
+      } else if (err.message.includes('401')) {
+        // Authentication issue
+        console.error("Authentication error:", err);
+        setError("Authentication error. Please sign in again.");
         
-        // Retry after a delay with exponential backoff
-        setTimeout(() => {
-          syncUserData(true); // Force refresh on retry
-        }, 2000 * Math.pow(2, retryCount));
-        
-        return; // Don't set loading to false yet
+        // Consider clearing session on auth errors if recurring
+        if (syncAttempts >= 2) {
+          console.warn("Multiple auth failures detected, signing out");
+          setTimeout(() => handleSignOut(true), 500);
+          return;
+        }
+      } else if (err.message.includes('404')) {
+        // User not found in database
+        console.error("User not found in database:", err);
+        setError("Your account needs to be set up in our system. Please contact support.");
+      } else if (err.message.includes('Network')) {
+        // Network connectivity issues
+        console.error("Network error:", err);
+        setError("Network connection issue. Please check your internet connection.");
+      } else {
+        // Generic error
+        console.error("Unknown error syncing user data:", err);
+        setError(err.message || "Unknown error occurred");
       }
       
-      createFallbackUser(err.message);
+      // Create fallback user from Clerk data if possible
+      if (user) {
+        const fallbackUser = createFallbackUser();
+        setDbUser(fallbackUser);
+        updateCachedUser(fallbackUser);
+      }
+      
+      // Increment sync attempts
+      setSyncAttempts(prev => prev + 1);
     } finally {
-      if (retryCount >= MAX_RETRIES) {
-        console.error("Max retry attempts reached. Using fallback user data.");
-        setRetryCount(0); // Reset for next time
-      }
       setIsLoading(false);
       setLastSynced(new Date());
     }
-  }, [isSignedIn, isLoaded, retryCount, user?.id]);
+  }, [isSignedIn, isLoaded, user, checkCachedUser, updateCachedUser, handleSignOut, syncAttempts, createFallbackUser]);
   
-  // Helper to create fallback user from Clerk data
-  const createFallbackUser = (errorMessage) => {
-    console.warn("Using fallback user data from Clerk:", errorMessage);
-    
-    if (user) {
-      // Create fallback user from Clerk data
-      const fallbackUser = {
-        clerkId: user.id,
-        firstName: user.firstName || "",
-        lastName: user.lastName || "",
-        email: user.primaryEmailAddress?.emailAddress || "",
-        role: "user", // Default role
-        isFallback: true, // Flag to indicate this is not from DB
-      };
-      
-      setDbUser(fallbackUser);
-      
-      // Even fallback data gets cached, but with shorter TTL
-      userDataCache.data = fallbackUser;
-      userDataCache.timestamp = Date.now();
-      userDataCache.ttl = 10000; // 10 seconds for fallback data
-    }
-    
-    // Set error message
-    setError(errorMessage);
-  };
-
-  // Initial sync when auth state changes
+  // Initial data sync when auth state changes
   useEffect(() => {
+    // Only sync when Clerk is loaded and we know about DB connection
     if (isLoaded && isConnected !== undefined) {
       syncUserData();
     }
   }, [isSignedIn, isLoaded, isConnected, syncUserData]);
 
-  // Reset retry count when auth state changes
-  useEffect(() => {
-    setRetryCount(0);
-  }, [isSignedIn, isLoaded]);
-
   // Derived auth state
   const isAuthenticated = !!isSignedIn;
-  
-  // Role helpers
   const isAdmin = dbUser?.role === "admin";
-  const isAgent = dbUser?.role === "agent";
+  const isAgent = ["agent", "agent_pending"].includes(dbUser?.role);
+  const isApprovedAgent = dbUser?.role === "agent" && dbUser?.approved === true;
   const isPendingAgent = dbUser?.role === "agent_pending";
   const hasError = !!error;
 
-  // Auth context value
+  // Provide all auth values
   const authContextValue = {
-    isAuthenticated,
+    // User state
+    user,               // Raw clerk user
+    dbUser,             // Database user
+    isAuthenticated,    // Is signed in
+    
+    // Role helpers
     isAdmin,
     isAgent,
+    isApprovedAgent,
     isPendingAgent,
-    dbUser,
+    
+    // Status information
     isLoading,
-    error,
     hasError,
+    error,
     lastSynced,
+    syncAttempts,
+    
+    // Actions
     syncUserData,
-    failedAttempts,
+    signOut: handleSignOut
   };
 
   return (

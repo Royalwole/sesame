@@ -1,6 +1,8 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { FiHome, FiHeart, FiCalendar, FiClock } from 'react-icons/fi';
+import { getImageUrl, handleImageError } from '../../lib/image-utils';
+import Image from 'next/image';
 
 export default function UserDashboard() {
   const { dbUser } = useAuth();
@@ -118,9 +120,10 @@ export default function UserDashboard() {
                 <div className="h-16 w-16 bg-gray-200 rounded-md overflow-hidden flex-shrink-0">
                   {listing.image && (
                     <img
-                      src={listing.image}
+                      src={getImageUrl(listing.image)}
                       alt={listing.title}
                       className="h-full w-full object-cover"
+                      onError={(e) => handleImageError(e, true)}
                     />
                   )}
                 </div>

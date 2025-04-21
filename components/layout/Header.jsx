@@ -21,8 +21,10 @@ import {
   FiHeart,
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
+import { useHydration } from "../../lib/useHydration"; // Import the useHydration hook
 
 export default function Header() {
+  const isHydrated = useHydration(); // Add this to track hydration state
   const router = useRouter();
   const { isSignedIn, isLoaded } = useUser();
   const { isAdmin, isAgent } = useAuth();
@@ -37,6 +39,9 @@ export default function Header() {
 
   // Close menus when clicking outside
   useEffect(() => {
+    // Only run on the client side
+    if (!isHydrated) return;
+
     function handleClickOutside(event) {
       if (accountMenuRef.current && !accountMenuRef.current.contains(event.target)) {
         setAccountMenuOpen(false);
@@ -48,33 +53,46 @@ export default function Header() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [mobileMenuOpen]);
+  }, [mobileMenuOpen, isHydrated]);
 
   // Focus search input when search opens
   useEffect(() => {
+    // Only run on the client side
+    if (!isHydrated) return;
+
     if (searchOpen && searchInputRef.current) {
       searchInputRef.current.focus();
     }
-  }, [searchOpen]);
+  }, [searchOpen, isHydrated]);
 
   // Handle scroll behavior
   useEffect(() => {
+    // Only run on the client side
+    if (!isHydrated) return;
+
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
     };
 
     window.addEventListener("scroll", handleScroll);
+    // Initial check for page load position
+    handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [isHydrated]);
 
   // Close mobile menu on route change
   useEffect(() => {
+    if (!isHydrated) return;
+
     setMobileMenuOpen(false);
     setSearchOpen(false);
-  }, [router.asPath]);
+  }, [router.asPath, isHydrated]);
 
   // Prevent body scroll when mobile menu is open
   useEffect(() => {
+    // Only run on the client side
+    if (!isHydrated) return;
+
     if (mobileMenuOpen || searchOpen) {
       document.body.style.overflow = "hidden";
     } else {
@@ -83,7 +101,7 @@ export default function Header() {
     return () => {
       document.body.style.overflow = "";
     };
-  }, [mobileMenuOpen, searchOpen]);
+  }, [mobileMenuOpen, searchOpen, isHydrated]);
 
   const isActive = (path) => {
     if (path === "/") {

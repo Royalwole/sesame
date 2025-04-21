@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "react-hot-toast";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { AuthProvider } from "../contexts/AuthContext";
 import { DatabaseProvider } from "../contexts/DatabaseContext";
@@ -130,11 +130,19 @@ function ErrorFallback({ error, resetErrorBoundary }) {
   );
 }
 
+// Create a client-side only component for dev tools
+const DevTools = dynamic(
+  () => import('../components/debug/DevTools').then(mod => mod.default),
+  { ssr: false }
+);
+
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
 
   // Initialize monitoring safely on component mount with a delay
   useEffect(() => {
+    setIsMounted(true);
     // Delay non-critical operations
     const timer = setTimeout(() => {
       initMonitoring();
@@ -188,10 +196,8 @@ function MyApp({ Component, pageProps }) {
 
         <DatabaseProvider>
           <AuthProvider>
-            {process.env.NODE_ENV === "development" && (
-              <div className="fixed bottom-0 right-0 bg-black text-white text-xs p-1 z-50">
-                Path: {router.pathname}
-              </div>
+            {isMounted && process.env.NODE_ENV === "development" && (
+              <DevTools pathname={router.pathname} />
             )}
 
             {showStandardLayout ? (

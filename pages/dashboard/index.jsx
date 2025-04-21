@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/router";
 import { useAuth } from "../../contexts/AuthContext";
 import Head from "next/head";
@@ -6,80 +6,50 @@ import Loader from "../../components/utils/Loader";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { dbUser, isLoading, isAuthenticated, isAgent, isAdmin } = useAuth();
-  const [redirecting, setRedirecting] = useState(false);
-  const hasRedirected = useRef(false);
-  const timeoutRef = useRef(null);
+  const { dbUser, isLoading, isAuthenticated, isAdmin, isAgent } = useAuth();
 
-  // Add a debugging indicator for the loading state
-  console.log("Dashboard state:", {
-    isLoading,
-    isAuthenticated,
-    redirecting,
-    dbUser,
-  });
-
+  // Handle routing based on user role
   useEffect(() => {
-    // Clean up any timeouts when component unmounts
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    // Only proceed if authentication state is resolved
-    if (!isLoading) {
-      if (!isAuthenticated) {
-        // Not authenticated, redirect to sign-in
-        console.log("User not authenticated, redirecting to sign-in");
-        if (!hasRedirected.current) {
-          hasRedirected.current = true;
-          router.push(
-            `/auth/sign-in?redirect_url=${encodeURIComponent("/dashboard")}`
-          );
-        }
-        return;
-      }
-
-      // Prevent redirect loop
-      if (redirecting || hasRedirected.current) return;
-
-      // Determine which dashboard to show based on user role
-      setRedirecting(true);
-      console.log("Routing to appropriate dashboard:", {
-        isAdmin,
-        isAgent,
-        dbUser,
-      });
-
-      // Create a stable role check to avoid routing issues
-      const userRole = dbUser?.role || "user";
-      let targetPath;
-
-      if (userRole === "admin") {
-        targetPath = "/dashboard/admin";
-      } else if (["agent", "agent_pending"].includes(userRole)) {
-        targetPath = "/dashboard/agent";
-      } else {
-        targetPath = "/dashboard/user";
-      }
-
-      // Set a short timeout to prevent excessive redirects
-      timeoutRef.current = setTimeout(() => {
-        hasRedirected.current = true;
-        console.log(`Redirecting to ${targetPath}`);
-        router.replace(targetPath);
-      }, 100);
+    // Wait for authentication to complete
+    if (isLoading) return;
+    
+    // If not authenticated, redirect to sign-in
+    if (!isAuthenticated) {
+      console.log("Not authenticated, redirecting to sign-in page");
+      const returnUrl = encodeURIComponent("/dashboard");
+      router.replace(`/auth/sign-in?redirect_url=${returnUrl}`);
+      return;
     }
-  }, [
-    isLoading,
-    isAuthenticated,
-    isAgent,
-    isAdmin,
-    router,
-    redirecting,
-    dbUser,
-  ]);
+
+    // Get user role and determine appropriate dashboard
+    console.log("Determining appropriate dashboard for user");
+    const targetDashboard = getDashboardForUser(dbUser);
+    
+    // Only redirect if we're not already on the target page
+    if (router.pathname !== targetDashboard) {
+      console.log(`Redirecting to ${targetDashboard}`);
+      router.replace(targetDashboard);
+    }
+  }, [isLoading, isAuthenticated, dbUser, router]);
+
+  // Helper function to determine which dashboard to show based on user role
+  function getDashboardForUser(user) {
+    // Default dashboard for regular users
+    let dashboardPath = "/dashboard/user";
+    
+    if (!user) {
+      return dashboardPath;
+    }
+    
+    // Override based on role
+    if (user.role === "admin") {
+      dashboardPath = "/dashboard/admin";
+    } else if (user.role === "agent" || user.role === "agent_pending") {
+      dashboardPath = "/dashboard/agent";
+    }
+    
+    return dashboardPath;
+  }
 
   return (
     <>
@@ -88,29 +58,33 @@ export default function DashboardPage() {
       </Head>
 
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-        <p className="text-gray-600 text-center">
-          {isLoading
-            ? "Loading authentication..."
-            : redirecting
-            ? "Redirecting to your dashboard..."
-            : "Preparing your dashboard..."}
-        </p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">
+            {isLoading
+              ? "Loading your account..."
+              : "Redirecting to your dashboard..."}
+          </p>
+        </div>
 
-        {/* Add debug info in development */}
+        {/* Debug info during development */}
         {process.env.NODE_ENV === "development" && (
-          <div className="mt-8 p-4 bg-gray-100 rounded text-xs text-gray-700 max-w-md">
-            <p>Auth loading: {isLoading ? "Yes" : "No"}</p>
-            <p>Authenticated: {isAuthenticated ? "Yes" : "No"}</p>
-            <p>Redirecting: {redirecting ? "Yes" : "No"}</p>
-            <p>User role: {dbUser?.role || "None"}</p>
-            <p>Path: {router.pathname}</p>
-            <button
-              onClick={() => router.reload()}
-              className="mt-2 px-2 py-1 bg-blue-500 text-white rounded"
-            >
-              Reload page
-            </button>
+          <div className="mt-8 p-4 bg-white shadow rounded max-w-md w-full text-sm">
+            <h3 className="font-bold text-gray-700 mb-2">Debug Information</h3>
+            <div className="space-y-1 text-gray-600">
+              <p>Auth state: {isLoading ? "Loading" : isAuthenticated ? "Authenticated" : "Not authenticated"}</p>
+              <p>User role: {dbUser?.role || "None"}</p>
+              <p>Current path: {router.pathname}</p>
+              <p>Target dashboard: {!isLoading && dbUser ? getDashboardForUser(dbUser) : "Unknown"}</p>
+            </div>
+            <div className="mt-3">
+              <button
+                onClick={() => router.reload()}
+                className="px-3 py-1 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm"
+              >
+                Reload page
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -118,5 +92,5 @@ export default function DashboardPage() {
   );
 }
 
-// Set custom layout to avoid showing header/footer until we know which dashboard to show
+// Use a minimal layout without header/footer
 DashboardPage.getLayout = (page) => page;

@@ -1,47 +1,100 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, getAuth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Define public routes that don't require authentication
-const publicRoutes = [
-  "/",
-  "/about",
-  "/contact",
-  "/api/public",
-  "/auth/sign-in",
-  "/auth/sign-up",
-  "/listings",
-  "/images",
-  "/_next",
-];
+// Configuration for public routes and authentication
+const AUTH_CONFIG = {
+  // Routes that are publicly accessible
+  publicPaths: [
+    "/", // Home page
+    "/about", // About page
+    "/contact", // Contact page
+    "/listings", // Public listings
+    "/images/", // Public images
+    "/api/public/", // Public API endpoints
+    "/api/webhooks/", // Webhooks
+    "/api/debug/", // Debug endpoints
+    "/debug/", // Debug pages
+    "/_next", // Next.js assets
+    "/favicon", // Favicons
+    "/api/health", // Health check endpoint
+    "/static/", // Static assets
+    "/fonts/", // Font assets
+    "/icons/", // Icon assets
+    "/clerk", // Clerk related paths
+  ],
 
-// Export the Clerk middleware with your custom authorization logic
-export default clerkMiddleware((auth, request) => {
-  // Safely access the pathname
-  const pathname = request.nextUrl?.pathname || "";
+  // Sign-in path for redirects
+  signInUrl: "/auth/sign-in",
+};
 
-  // Check if the current path is public
-  const isPublic = publicRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
+/**
+ * Determines if a route is public and doesn't require authentication
+ */
+function isPublicRoute(path) {
+  return AUTH_CONFIG.publicPaths.some(
+    (publicPath) => path === publicPath || path.startsWith(publicPath)
   );
+}
 
-  // If it's a protected route and user is not authenticated, redirect to sign-in
-  if (!isPublic && !auth.userId && !pathname.includes("/auth/")) {
-    const signInUrl = new URL("/auth/sign-in", request.url);
-    signInUrl.searchParams.set("redirect_url", request.url);
+/**
+ * Determines if this is an auth-related path
+ */
+function isAuthPath(path) {
+  return path.startsWith("/auth/");
+}
+
+/**
+ * Determines if this is a Clerk-related path
+ */
+function isClerkPath(path) {
+  return path.includes("/@clerk") || path.includes("/__clerk");
+}
+
+/**
+ * Handles authentication and protection of routes using Clerk middleware
+ */
+export default clerkMiddleware((auth, request) => {
+  // Get the current path
+  const { pathname } = request.nextUrl;
+
+  // Check if this is a public route (no auth needed)
+  if (isPublicRoute(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Check if this is an auth-related path
+  if (isAuthPath(pathname) || isClerkPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Skip redirects for API routes to prevent redirect loops
+  const isApiRoute = pathname.startsWith("/api/");
+
+  // For protected routes, check if user is authenticated
+  if (!auth.userId && !isApiRoute) {
+    // Create sign in URL with redirect back to the current page
+    const signInUrl = new URL(AUTH_CONFIG.signInUrl, request.url);
+
+    // Only add redirect for page routes, not for API routes
+    if (!pathname.startsWith("/api/")) {
+      // Use just the pathname to avoid encoding issues with full URLs
+      signInUrl.searchParams.set("redirect_url", pathname);
+    }
+
+    console.log(`[Auth] Redirecting to sign-in from: ${pathname}`);
     return NextResponse.redirect(signInUrl);
   }
 
+  // User is authenticated or this is an API route, allow the request
   return NextResponse.next();
 });
 
-// Configure matcher to include API routes and other protected pages
+// Configure matcher to include only the routes we want to protect
 export const config = {
   matcher: [
-    // Match all API routes except public ones
+    // Match all except static assets
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+    // Include API routes
     "/api/:path*",
-    // Match auth-related routes
-    "/dashboard/:path*",
-    // Skip public assets and static files
-    "/((?!_next/static|_next/image|favicon.png|images|public).*)",
   ],
 };

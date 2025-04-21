@@ -20,16 +20,34 @@ export default async function handler(req, res) {
   const { id } = req.query;
   let dbConnection = false;
   const startTime = Date.now();
+  const requestId = `${startTime}-${Math.random().toString(36).substring(2, 10)}`;
 
   // Enhanced request logging
-  console.log(`[${startTime}] API Request: ${req.method} /api/listings/${id}`);
+  console.log(
+    `[${startTime}] [RequestID:${requestId}] API Request: ${req.method} /api/listings/${id}`
+  );
 
-  // CRITICAL FIX: Validate the ID format and early return if invalid
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    console.error(`Invalid listing ID format: ${id}`);
+  // Additional ID validation beyond the basic ObjectId check
+  if (!id || typeof id !== "string") {
+    console.error(`[${requestId}] Invalid listing ID format: ${id}`);
     return res.status(400).json({
-      error: "Invalid listing ID format",
-      requestedId: id,
+      success: false,
+      message: "Invalid listing ID format",
+      errorDetail: "The listing ID is missing or has an invalid format",
+      requestId,
+    });
+  }
+
+  // Improved ObjectId validation with detailed logging
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    console.error(
+      `[${requestId}] Invalid MongoDB ObjectID: ${id}, pattern match: ${/^[0-9a-fA-F]{24}$/.test(id)}`
+    );
+    return res.status(400).json({
+      success: false,
+      message: "Invalid listing ID",
+      errorDetail: "The provided ID is not a valid MongoDB ObjectID",
+      requestId,
     });
   }
 
@@ -44,49 +62,64 @@ export default async function handler(req, res) {
     // GET request - fetch listing
     if (req.method === "GET") {
       try {
-        // Create a request ID for tracking
-        const requestId = `${Date.now()}-${Math.random()
-          .toString(36)
-          .substring(2, 10)}`;
-        console.log(`[API] Listing request ${requestId} for ID: ${id}`);
-
-        // Validate ID format with robust error handling
-        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-          console.error(`[API:${requestId}] Invalid ID format: ${id}`);
-          return res.status(400).json({
-            success: false,
-            error: "Invalid listing ID format",
-            details: "The provided ID is not in a valid format",
-          });
-        }
+        console.log(`[API:${requestId}] Listing request for ID: ${id}`);
 
         // Create a fresh ObjectId for exact matching
-        const objectId = new mongoose.Types.ObjectId(id.toString().trim());
+        const objectId = new mongoose.Types.ObjectId(id);
         console.log(
           `[API:${requestId}] Querying with ObjectId: ${objectId.toString()}`
         );
 
-        // Use findOne with explicit ObjectId to avoid string/ObjectId comparison issues
-        const listing = await Listing.findOne({
-          _id: objectId,
-        })
-          .populate("createdBy", "firstName lastName email phone")
-          .lean();
+        // Use findById for better performance and cleaner code
+        let listing;
+        try {
+          listing = await Listing.findById(objectId)
+            .populate("createdBy", "firstName lastName email phone")
+            .lean();
+        } catch (dbErr) {
+          console.error(
+            `[${requestId}] Database error fetching listing: ${dbErr.message}`
+          );
+          return res.status(500).json({
+            success: false,
+            message: "Database error while fetching listing",
+            errorDetail: dbErr.message,
+            requestId,
+          });
+        }
 
-        // Handle not found case gracefully
+        // Handle not found case gracefully with detailed logging
         if (!listing) {
-          console.log(`[API:${requestId}] No listing found with ID: ${id}`);
+          console.error(
+            `[API:${requestId}] No listing found with ID: ${id}. Checking database connection...`
+          );
+
+          // Double check that DB is connected
+          const dbStatus = mongoose.connection.readyState;
+          const dbStatusText =
+            ["disconnected", "connected", "connecting", "disconnecting"][
+              dbStatus
+            ] || "unknown";
+
           return res.status(404).json({
             success: false,
             error: "Listing not found",
             message: "The requested listing does not exist or has been removed",
+            requestId,
+            _debug:
+              process.env.NODE_ENV === "development"
+                ? {
+                    dbStatus: dbStatusText,
+                    queriedId: id,
+                  }
+                : undefined,
           });
         }
 
         // Ensure the returned ID matches exactly what was requested to catch caching issues
         const returnedId = listing._id.toString();
 
-        if (returnedId !== id.toString()) {
+        if (returnedId !== id) {
           console.error(
             `[API:${requestId}] ID mismatch! Requested: ${id}, Found: ${returnedId}`
           );
@@ -94,11 +127,24 @@ export default async function handler(req, res) {
             success: false,
             error: "Data integrity error",
             message: "Found listing ID does not match requested ID",
+            requestId,
             details: {
-              requested: id.toString(),
+              requested: id,
               found: returnedId,
             },
           });
+        }
+
+        // Additional null check for critical listing fields
+        if (!listing.title || !listing.price) {
+          console.error(
+            `[${requestId}] Retrieved listing has missing critical fields: ${JSON.stringify(
+              {
+                hasTitle: !!listing.title,
+                hasPrice: !!listing.price,
+              }
+            )}`
+          );
         }
 
         console.log(
@@ -126,7 +172,7 @@ export default async function handler(req, res) {
           const user = await User.findOne({ clerkId: auth.userId }).lean();
 
           if (!user) {
-            return res.status(404).json({ error: "User not found" });
+            return res.status(404).json({ error: "User not found", requestId });
           }
 
           const isAdmin = user.role === "admin";
@@ -140,12 +186,14 @@ export default async function handler(req, res) {
             return res.status(403).json({
               error: "Access denied",
               message: "You don't have permission to view this listing",
+              requestId,
             });
           }
         } else if (listing.status !== "published") {
           return res.status(403).json({
             error: "Access denied",
             message: "This listing is not publicly available",
+            requestId,
           });
         }
 
@@ -175,11 +223,15 @@ export default async function handler(req, res) {
 
         return res.status(200).json(responseData);
       } catch (error) {
-        console.error(`[API] Error fetching listing ${id}:`, error);
+        console.error(
+          `[API:${requestId}] Error fetching listing ${id}:`,
+          error
+        );
         return res.status(500).json({
           success: false,
           error: "Server error",
           message: "An error occurred while retrieving the listing",
+          requestId,
           details:
             process.env.NODE_ENV === "development" ? error.message : undefined,
         });
@@ -203,7 +255,7 @@ export default async function handler(req, res) {
         }
 
         // Create a fresh ObjectId from the string ID to avoid comparison issues
-        const objectId = new mongoose.Types.ObjectId(id.toString());
+        const objectId = new mongoose.Types.ObjectId(id);
 
         // Find listing using consistent method
         const listing = await Listing.findOne({ _id: objectId });
@@ -565,10 +617,15 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
   } catch (error) {
-    console.error("Error in listings/[id] API:", error);
+    console.error(
+      `[${requestId}] Unexpected error in listings/[id] API:`,
+      error
+    );
     return res.status(500).json({
-      error: "Server error",
-      message: error.message || "An unexpected error occurred",
+      success: false,
+      message: "Server error",
+      errorDetail: error.message,
+      requestId,
     });
   } finally {
     if (dbConnection) {

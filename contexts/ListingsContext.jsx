@@ -130,7 +130,14 @@ export const ListingsProvider = ({ children, initialData = {} }) => {
       
       // Show toast for fallback data
       if (data.fallback && typeof window !== 'undefined') {
-        toast.warning(data.message || 'Using fallback data');
+        toast(data.message || 'Using fallback data', {
+          icon: '⚠️',
+          style: {
+            borderRadius: '10px',
+            background: '#FFF0C2',
+            color: '#664D03',
+          },
+        });
       }
     } catch (err) {
       if (!isMounted.current) return;

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { useState } from "react";
+import { getImageUrl, handleImageError } from "../../lib/image-utils";
 
 const ListingImage = ({
   src,
@@ -12,13 +13,14 @@ const ListingImage = ({
   const [isLoading, setLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
-  // Default fallback image
-  const fallbackSrc = "/images/placeholder-property.jpg";
+  // Primary fallback image
+  const fallbackSrc = "/images/placeholder-property.svg";
 
-  // Fix: Handle null/undefined src values
-  const imageSrc = src || fallbackSrc;
+  // Use our enhanced image utility to get the best available URL
+  // This will check Vercel Blob if the local file doesn't exist
+  const imageSrc = getImageUrl(src, fallbackSrc);
 
-  // Fix: Add key prop to help React with re-rendering
+  // Generate a key to help React with re-rendering
   const imageKey = `image-${src}-${width}-${height}`;
 
   return (
@@ -38,7 +40,9 @@ const ListingImage = ({
           ${className}
         `}
         onLoadingComplete={() => setLoading(false)}
-        onError={() => {
+        onError={(event) => {
+          // Use our enhanced error handler which provides better fallbacks
+          handleImageError(event, true); // true = use SVG fallback
           setHasError(true);
           setLoading(false);
         }}
@@ -56,7 +60,7 @@ const ListingImage = ({
   );
 };
 
-// Fix: Add display name for better debugging
+// Add display name for better debugging
 ListingImage.displayName = "ListingImage";
 
 export default ListingImage;

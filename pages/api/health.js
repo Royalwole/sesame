@@ -1,72 +1,47 @@
-import { getConnectionStatus, checkDBConnection } from "../../lib/db";
-import { checkBlobConnection } from "../../lib/blob";
+import { connectDB, disconnectDB } from "../../lib/db";
+import { withJsonResponse } from "../../lib/api/middleware";
 
-export default async function handler(req, res) {
-  // Only allow GET method
-  if (req.method !== "GET") {
-    return res.status(405).json({
-      error: "Method not allowed",
-      message: "Only GET requests are allowed",
-    });
-  }
+async function handler(req, res) {
+  // Return the status of each system component
+  const status = {
+    success: true,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || "development",
+    components: {
+      api: { status: "online" },
+      database: { status: "unknown", responseTime: null },
+    },
+  };
 
+  // Check database connection
+  const dbStart = Date.now();
   try {
-    // Check database connection
-    const dbStatus = await checkDBConnection();
+    await connectDB();
+    const dbResponseTime = Date.now() - dbStart;
 
-    // Check blob connection
-    const blobStatus = await checkBlobConnection();
-
-    // Get detailed connection status
-    const connectionStatus = getConnectionStatus();
-
-    // Overall system status
-    const systemStatus =
-      dbStatus.isConnected && blobStatus.isConnected ? "ok" : "degraded";
-
-    // Calculate uptime (if server-side)
-    let uptimeSeconds = 0;
-    if (typeof process !== "undefined" && process.uptime) {
-      uptimeSeconds = Math.floor(process.uptime());
-    }
-
-    // Complete response
-    const healthStatus = {
-      status: systemStatus,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || "development",
-      version: process.env.npm_package_version || "1.0.0",
-      uptime: uptimeSeconds,
-      storage: {
-        database: {
-          connected: dbStatus.isConnected,
-          status: dbStatus.status,
-          lastConnection: connectionStatus.lastConnection,
-          reconnectAttempts: connectionStatus.reconnectAttempts,
-          error: connectionStatus.error,
-          host: connectionStatus.host,
-          database: connectionStatus.database,
-        },
-        blob: {
-          enabled: !!process.env.BLOB_READ_WRITE_TOKEN,
-          connected: blobStatus.isConnected,
-          status: blobStatus.status,
-          message: blobStatus.message,
-        },
-      },
+    status.components.database = {
+      status: "online",
+      responseTime: `${dbResponseTime}ms`,
     };
-
-    // Set cache control headers
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-
-    return res.status(200).json(healthStatus);
   } catch (error) {
-    console.error("Health check error:", error);
-
-    return res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
+    status.success = false;
+    status.components.database = {
+      status: "offline",
       error: error.message,
-    });
+      responseTime: `${Date.now() - dbStart}ms`,
+    };
+  } finally {
+    try {
+      await disconnectDB();
+    } catch (e) {
+      // Ignore disconnect errors
+    }
   }
+
+  // Set appropriate status code
+  const statusCode = status.success ? 200 : 503;
+  return res.status(statusCode).json(status);
 }
+
+export default withJsonResponse(handler);

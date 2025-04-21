@@ -1,15 +1,20 @@
 import { connectDB, disconnectDB } from "../../../lib/db";
 import { withJsonResponse } from "../../../lib/api/middleware";
 import { getAuth } from "@clerk/nextjs/server";
+import User from "../../../models/User";
 
 async function handler(req, res) {
   console.log("API /users/me called");
+  const requestId = `req_${Date.now().toString(36)}`;
+  console.log(`[${requestId}] Processing user data request`);
 
   // Only allow GET method
   if (req.method !== "GET") {
+    console.log(`[${requestId}] Method not allowed: ${req.method}`);
     return res.status(405).json({
       success: false,
       error: "Method not allowed",
+      requestId,
     });
   }
 
@@ -21,59 +26,49 @@ async function handler(req, res) {
 
     // Check if auth exists
     if (!auth?.userId) {
-      console.log("No userId in auth object");
+      console.log(`[${requestId}] No userId in auth object`);
       return res.status(401).json({
         success: false,
         error: "Unauthorized",
         message: "No authenticated user found",
+        requestId,
       });
     }
 
-    console.log(`Fetching user with clerkId: ${auth.userId}`);
+    console.log(`[${requestId}] Fetching user with clerkId: ${auth.userId}`);
 
-    // Create a mock user response for testing
-    // This will help determine if the issue is with the DB or with Clerk
-    return res.status(200).json({
-      success: true,
-      user: {
-        _id: "mock_id",
-        clerkId: auth.userId,
-        firstName: "Test",
-        lastName: "User",
-        email: "test@example.com",
-        role: "admin", // For testing admin access
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
-
-    /* Commented out until we confirm the above works
     try {
       // Connect to database
-      console.log("Connecting to database...");
+      console.log(`[${requestId}] Connecting to database...`);
       await connectDB();
       dbConnection = true;
-      console.log("Database connected");
+      console.log(`[${requestId}] Database connected`);
 
       // Find user in database
-      console.log(`Looking for user with clerkId: ${auth.userId}`);
+      console.log(
+        `[${requestId}] Looking for user with clerkId: ${auth.userId}`
+      );
       const user = await User.findOne({ clerkId: auth.userId }).lean();
 
       // If user not found, return error
       if (!user) {
-        console.log(`User not found for clerkId: ${auth.userId}, returning 404`);
+        console.log(
+          `[${requestId}] User not found for clerkId: ${auth.userId}, returning 404`
+        );
         return res.status(404).json({
           success: false,
           error: "User not found in database",
-          message: "Please ensure your account is properly set up"
+          message: "Please ensure your account is properly set up",
+          requestId,
         });
       }
 
-      console.log(`User found with role: ${user.role}`);
+      console.log(`[${requestId}] User found with role: ${user.role}`);
 
       // Return successful response with user data
       return res.status(200).json({
         success: true,
+        requestId,
         user: {
           _id: user._id,
           clerkId: user.clerkId,
@@ -86,35 +81,40 @@ async function handler(req, res) {
           phone: user.phone || "",
           bio: user.bio || "",
           agentDetails: user.agentDetails || null,
-        }
+        },
       });
     } catch (dbError) {
-      console.error("Database error:", dbError);
+      console.error(`[${requestId}] Database error:`, dbError);
       return res.status(503).json({
         success: false,
         error: "Database connection failed",
         message: "We're experiencing database issues. Please try again later.",
-        details: process.env.NODE_ENV === "development" ? dbError.message : undefined
+        details:
+          process.env.NODE_ENV === "development" ? dbError.message : undefined,
+        requestId,
       });
     }
-    */
   } catch (error) {
-    console.error("General error in /api/users/me:", error);
+    console.error(`[${requestId}] General error in /api/users/me:`, error);
     return res.status(500).json({
       success: false,
       error: "Failed to fetch user data",
       message: "An unexpected error occurred",
       details:
         process.env.NODE_ENV === "development" ? error.message : undefined,
+      requestId,
     });
   } finally {
     // Disconnect from database if we connected
     if (dbConnection) {
       try {
         await disconnectDB();
-        console.log("Database disconnected");
+        console.log(`[${requestId}] Database disconnected`);
       } catch (disconnectError) {
-        console.error("Error disconnecting from database:", disconnectError);
+        console.error(
+          `[${requestId}] Error disconnecting from database:`,
+          disconnectError
+        );
       }
     }
   }

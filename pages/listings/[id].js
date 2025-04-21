@@ -17,10 +17,8 @@ import LoadingSpinner from "../../components/ui/LoadingSpinner";
 import ErrorMessage from "../../components/ui/ErrorMessage";
 import { formatDate } from "../../lib/date-utils";
 import toast from "react-hot-toast";
-// Import ListingDetail component properly here - at the top with other imports
 import ListingDetail from "../../components/listings/ListingDetail";
 
-// Dynamically import heavy components
 const ListingMap = dynamic(
   () => import("../../components/listings/ListingMap"),
   {
@@ -43,9 +41,6 @@ const SimilarListings = dynamic(
   }
 );
 
-// Remove the duplicate import that was causing the error
-// import ListingDetailComponent from "../../components/listings/ListingDetail";
-
 export default function ListingDetailPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -54,7 +49,6 @@ export default function ListingDetailPage() {
   const [error, setError] = useState(null);
   const [isFavorited, setIsFavorited] = useState(false);
 
-  // Fetch listing data
   useEffect(() => {
     if (!id) return;
 
@@ -63,42 +57,101 @@ export default function ListingDetailPage() {
       setError(null);
 
       try {
+        // Log the listing ID being fetched
         console.log(`Fetching listing data for ID: ${id}`);
 
-        // Add retries and timeout for robustness
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-        const response = await fetch(`/api/listings/${id}`, {
-          headers: {
-            "Cache-Control": "no-cache",
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error("Listing not found");
-          } else {
-            throw new Error(`Server error: ${response.status}`);
-          }
+        // Validate the listing ID format (MongoDB ObjectID is 24-character hex string)
+        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(id);
+        if (!isValidObjectId) {
+          console.error(`Invalid listing ID format: ${id}`);
+          setError(
+            "Invalid listing ID format. Please check the URL and try again."
+          );
+          setLoading(false);
+          return;
         }
 
-        const data = await response.json();
+        const MAX_RETRIES = 2;
+        let retries = 0;
+        let success = false;
 
-        if (data.success && data.listing) {
-          console.log("Fetched listing data:", data.listing); // Log the listing data
-          setListing(data.listing);
-        } else {
-          throw new Error(data.message || "Failed to load listing");
+        while (!success && retries <= MAX_RETRIES) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+          try {
+            // Add request timestamp for debugging
+            const requestStartTime = new Date().getTime();
+            console.log(`API request started at: ${new Date().toISOString()}`);
+
+            const response = await fetch(`/api/listings/${id}`, {
+              headers: {
+                "Cache-Control": "no-cache",
+              },
+              signal: controller.signal,
+            });
+
+            clearTimeout(timeoutId);
+
+            // Log response time
+            const requestEndTime = new Date().getTime();
+            console.log(
+              `API response received after ${requestEndTime - requestStartTime}ms`
+            );
+
+            if (!response.ok) {
+              if (response.status === 404) {
+                throw new Error(
+                  "Listing not found. It may have been removed or the ID is incorrect."
+                );
+              } else {
+                throw new Error(
+                  `Server error (${response.status}): ${response.statusText}`
+                );
+              }
+            }
+
+            const data = await response.json();
+
+            if (data.success && data.listing) {
+              console.log("Fetched listing data:", data.listing);
+              setListing(data.listing);
+              success = true;
+            } else {
+              throw new Error(data.message || "Failed to load listing data");
+            }
+
+            break;
+          } catch (err) {
+            if (
+              err.name === "AbortError" ||
+              (err.message && !err.message.includes("not found"))
+            ) {
+              retries++;
+              if (retries <= MAX_RETRIES) {
+                console.log(`Retry attempt ${retries} for listing ${id}`);
+              } else {
+                throw err;
+              }
+            } else {
+              throw err;
+            }
+          }
         }
       } catch (err) {
         console.error("Error fetching listing:", err);
 
         if (err.name === "AbortError") {
           setError("Request timed out. Please try again.");
+        } else if (err.message && err.message.includes("not found")) {
+          setError(
+            `Listing not found. It may have been removed or the URL is incorrect.`
+          );
+          console.error(
+            `Listing not found details - ID: ${id}, Format valid: ${/^[0-9a-fA-F]{24}$/.test(
+              id
+            )}`
+          );
         } else {
           setError(err.message || "Failed to load listing");
         }
@@ -110,22 +163,17 @@ export default function ListingDetailPage() {
     fetchListing();
   }, [id]);
 
-  // Handle contact agent action
   const handleContactAgent = () => {
     toast.success("Contact request sent to agent");
-    // Implement actual contact functionality
   };
 
-  // Handle toggle favorite
   const handleToggleFavorite = () => {
     setIsFavorited(!isFavorited);
     toast.success(
       isFavorited ? "Removed from favorites" : "Added to favorites"
     );
-    // Implement actual favorite toggle API call
   };
 
-  // Handle loading state
   if (loading) {
     return (
       <Layout>
@@ -136,7 +184,6 @@ export default function ListingDetailPage() {
     );
   }
 
-  // Handle error state
   if (error) {
     return (
       <Layout>
@@ -152,7 +199,6 @@ export default function ListingDetailPage() {
     );
   }
 
-  // Handle no listing (should not happen with proper loading/error states)
   if (!listing) {
     return (
       <Layout>
@@ -182,7 +228,6 @@ export default function ListingDetailPage() {
       </Head>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Use the ListingDetail component properly */}
         {listing && (
           <ListingDetail
             listing={listing}
@@ -192,7 +237,6 @@ export default function ListingDetailPage() {
           />
         )}
 
-        {/* Similar listings section */}
         {listing && (
           <div className="mt-16">
             <SimilarListings
