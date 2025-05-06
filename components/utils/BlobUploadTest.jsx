@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { FiUpload, FiCheck, FiAlertCircle } from "react-icons/fi";
+import { uploadToStorage } from "../../lib/storage";
 
-export default function BlobUploadTest({ onUploadComplete, folder = "test" }) {
+export default function FirebaseUploadTest({ onUploadComplete, folder = "test" }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
@@ -25,18 +26,15 @@ export default function BlobUploadTest({ onUploadComplete, folder = "test" }) {
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", folder);
-
-      const response = await fetch("/api/upload/blob", {
-        method: "POST",
-        body: formData,
+      const result = await uploadToStorage(file, file.name, {
+        folder,
+        metadata: {
+          contentType: file.type,
+          uploadedBy: "test-component",
+        },
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
+      if (!result.success) {
         throw new Error(result.error || "Upload failed");
       }
 
@@ -97,7 +95,7 @@ export default function BlobUploadTest({ onUploadComplete, folder = "test" }) {
         ) : (
           <>
             <FiUpload className="mr-2" />
-            Upload to Vercel Blob
+            Upload to Firebase Storage
           </>
         )}
       </button>
@@ -120,7 +118,7 @@ export default function BlobUploadTest({ onUploadComplete, folder = "test" }) {
                 </a>
               </p>
               <p className="text-xs text-green-600 mt-1">
-                Path: {uploadResult.pathname}
+                Path: {uploadResult.path}
               </p>
             </div>
           </div>

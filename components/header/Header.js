@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/router";
 import { UserButton, useUser, SignInButton } from "@clerk/nextjs";
 import { FiMenu, FiX, FiHome, FiSearch, FiUser } from "react-icons/fi";
@@ -43,7 +44,15 @@ export default function Header() {
           {/* Logo */}
           <div className="flex-shrink-0">
             <Link href="/">
-              <span className="text-2xl font-bold text-wine">TopDial</span>
+              <div className="relative">
+                <Image
+                  src="/logo.svg"
+                  alt="Topdial.ng"
+                  width={120}
+                  height={38}
+                />
+                <div className="absolute -bottom-1 left-0 w-10 h-0.5 bg-gradient-to-r from-amber-400 to-amber-300"></div>
+              </div>
             </Link>
           </div>
 
@@ -85,8 +94,8 @@ export default function Header() {
                       isAdmin
                         ? "/dashboard/admin"
                         : isAgent
-                        ? "/dashboard/agent"
-                        : "/dashboard"
+                          ? "/dashboard/agent"
+                          : "/dashboard"
                     }
                     className="text-gray-500 hover:text-wine px-3 py-2 rounded-md text-sm font-medium"
                   >
@@ -156,8 +165,8 @@ export default function Header() {
                   isAdmin
                     ? "/dashboard/admin"
                     : isAgent
-                    ? "/dashboard/agent"
-                    : "/dashboard"
+                      ? "/dashboard/agent"
+                      : "/dashboard"
                 }
                 className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
                 onClick={() => setIsMenuOpen(false)}

@@ -11,12 +11,13 @@ import "../styles/globals.css";
 import Head from "next/head";
 import NextNProgress from "nextjs-progressbar";
 import dynamic from 'next/dynamic';
+import { useHydration } from "../lib/useHydration";
 
 // Import monitoring conditionally to avoid build errors
 const initMonitoring = () => {
   if (typeof window !== "undefined") {
     // Use requestIdleCallback to initialize monitoring during browser idle time
-    if (window.requestIdleCallback) {
+    if ("requestIdleCallback" in window) {
       window.requestIdleCallback(() => {
         import("../lib/monitoring")
           .then(({ initClientMonitoring }) => {
@@ -36,7 +37,7 @@ const initMonitoring = () => {
           .catch((err) => {
             console.log("Monitoring module not available", err);
           });
-      }, 2000); // Delay by 2 seconds to not block critical rendering
+      }, 2000); // Delay by 2 seconds
     }
   }
 };
@@ -52,80 +53,28 @@ const noLayoutRoutes = [
   "/dashboard/agent",
 ];
 
-// Add this helper function to better match routes including catch-all patterns
 function isNoLayoutRoute(pathname) {
-  return noLayoutRoutes.some(
-    (route) =>
-      pathname === route ||
-      pathname.startsWith(`${route}/`) ||
-      (pathname.includes("/sign-in/") && route === "/auth/sign-in") ||
-      (pathname.includes("/sign-up/") && route === "/auth/sign-up")
-  );
+  return noLayoutRoutes.some(route => {
+    if (route.includes("[") && route.includes("]")) {
+      const baseRoute = route.split("[")[0];
+      return pathname.startsWith(baseRoute);
+    }
+    return pathname === route;
+  });
 }
 
-// Load error fallback component dynamically
+// Error fallback component
 function ErrorFallback({ error, resetErrorBoundary }) {
-  // Log the error to our monitoring system - safely
-  useEffect(() => {
-    console.error("Application error:", error);
-
-    // Try to log to monitoring system if available - with delay to avoid blocking UI
-    if (typeof window !== "undefined") {
-      setTimeout(() => {
-        import("../lib/monitoring")
-          .then(({ logClientError }) => {
-            logClientError(error, { component: "GlobalErrorBoundary" });
-          })
-          .catch(() => {
-            // Monitoring not available
-          });
-      }, 100);
-    }
-  }, [error]);
-
   return (
-    <div
-      role="alert"
-      className="min-h-screen flex items-center justify-center bg-gray-50 p-4"
-    >
-      <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
-        <div className="text-red-500 text-4xl mb-4 text-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            className="h-16 w-16 inline-block"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
-        </div>
-        <h2 className="text-xl font-bold text-center mb-4">
-          Oops! Something went wrong
-        </h2>
-        <p className="text-gray-600 mb-4">
-          We're sorry for the inconvenience. Please try refreshing the page.
-        </p>
-        <div className="flex justify-center space-x-4">
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          >
-            Reload Page
-          </button>
-          <button
-            onClick={resetErrorBoundary}
-            className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
+    <div role="alert" className="p-4">
+      <h2 className="text-lg font-semibold text-red-600">Something went wrong</h2>
+      <pre className="mt-2 text-sm text-red-500">{error.message}</pre>
+      <button
+        onClick={resetErrorBoundary}
+        className="mt-4 rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+      >
+        Try again
+      </button>
     </div>
   );
 }
@@ -139,10 +88,12 @@ const DevTools = dynamic(
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
+  const isHydrated = useHydration();
 
   // Initialize monitoring safely on component mount with a delay
   useEffect(() => {
     setIsMounted(true);
+    
     // Delay non-critical operations
     const timer = setTimeout(() => {
       initMonitoring();
@@ -151,11 +102,22 @@ function MyApp({ Component, pageProps }) {
     return () => clearTimeout(timer);
   }, []);
 
-  // Use the improved route matching function
-  const showStandardLayout = !isNoLayoutRoute(router.pathname);
-
   // Use layout from component if available, otherwise use default layout
   const getLayout = Component.getLayout || ((page) => page);
+  const showStandardLayout = !isNoLayoutRoute(router.pathname);
+
+  // Don't render layout-sensitive content until after hydration
+  if (!isMounted || !isHydrated) {
+    return (
+      <ClerkProvider
+        {...pageProps}
+        navigate={(to) => router.push(to)}
+        publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      >
+        <div className="min-h-screen" />
+      </ClerkProvider>
+    );
+  }
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => {}}>
@@ -163,79 +125,25 @@ function MyApp({ Component, pageProps }) {
         {...pageProps}
         navigate={(to) => router.push(to)}
         publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-        appearance={{
-          layout: {
-            termsPageUrl: "https://example.com/terms",
-            privacyPageUrl: "https://example.com/privacy",
-          },
-          variables: {
-            colorPrimary: "#4f46e5",
-          },
-        }}
       >
         <Head>
-          <link rel="icon" href="/favicon.png" />
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0"
-          />
-          <meta
-            name="description"
-            content="TopDial - Your Premier Real Estate Platform"
-          />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         </Head>
-
-        <NextNProgress
-          color="#4f46e5"
-          startPosition={0.3}
-          stopDelayMs={200}
-          height={3}
-          showOnShallow={true}
-          options={{ showSpinner: false }}
-        />
 
         <DatabaseProvider>
           <AuthProvider>
-            {isMounted && process.env.NODE_ENV === "development" && (
-              <DevTools pathname={router.pathname} />
-            )}
-
-            {showStandardLayout ? (
-              <>
-                <Header />
-                <main className="min-h-[calc(100vh-200px)]">
-                  {getLayout(<Component {...pageProps} />)}
-                </main>
-                <Footer />
-              </>
-            ) : (
-              getLayout(<Component {...pageProps} />)
-            )}
-
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                duration: 5000,
-                style: {
-                  background: "#363636",
-                  color: "#fff",
-                },
-                success: {
-                  duration: 3000,
-                  iconTheme: {
-                    primary: "#4CAF50",
-                    secondary: "#fff",
-                  },
-                },
-                error: {
-                  duration: 5000,
-                  iconTheme: {
-                    primary: "#E53E3E",
-                    secondary: "#fff",
-                  },
-                },
-              }}
-            />
+            <div className="flex min-h-screen flex-col">
+              <NextNProgress />
+              <Toaster position="top-right" />
+              
+              {showStandardLayout && <Header />}
+              <main className="flex-1">
+                {getLayout(<Component {...pageProps} />)}
+              </main>
+              {showStandardLayout && <Footer />}
+              
+              {process.env.NODE_ENV === 'development' && <DevTools />}
+            </div>
           </AuthProvider>
         </DatabaseProvider>
       </ClerkProvider>

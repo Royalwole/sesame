@@ -11,6 +11,12 @@ const { execSync } = require("child_process");
 const dns = require("dns");
 const os = require("os");
 const dotenv = require("dotenv");
+const mongoose = require("mongoose");
+const { promisify } = require("util");
+const { exec } = require("child_process");
+
+const lookup = promisify(dns.lookup);
+const execPromise = promisify(exec);
 
 // Color codes for output
 const COLORS = {
@@ -602,6 +608,80 @@ function hideCredentials(uri) {
     return uri;
   } catch (_) {
     return "[Error parsing URI]";
+  }
+}
+
+// Check MongoDB connectivity using mongoose
+async function checkMongoDBConnectivity() {
+  console.log("🔍 Running MongoDB connectivity diagnostics...\n");
+
+  // Get MongoDB URI from environment
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.error("❌ MONGODB_URI environment variable is not set");
+    return;
+  }
+
+  // Parse connection string
+  const connectionParts = uri.match(
+    /mongodb(\+srv)?:\/\/([^:]+):([^@]+)@([^/]+)/
+  );
+  if (!connectionParts) {
+    console.error("❌ Invalid MongoDB connection string format");
+    return;
+  }
+
+  const [, , username, password, host] = connectionParts;
+  console.log("📡 Testing connection to:", host);
+
+  try {
+    // DNS lookup
+    console.log("\n🌐 Checking DNS resolution...");
+    const { address } = await lookup(host);
+    console.log("✅ DNS resolution successful:", address);
+
+    // Network connectivity test
+    console.log("\n🔌 Testing network connectivity...");
+    await execPromise(`ping -n 1 ${host}`);
+    console.log("✅ Network connectivity test passed");
+
+    // MongoDB connection test
+    console.log("\n🔄 Testing MongoDB connection...");
+    const startTime = Date.now();
+
+    await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
+    });
+
+    const endTime = Date.now();
+    console.log(`✅ MongoDB connection successful (${endTime - startTime}ms)`);
+
+    // Check server status
+    const adminDb = mongoose.connection.db.admin();
+    const serverStatus = await adminDb.serverStatus();
+
+    console.log("\n📊 Server Status:");
+    console.log(`- MongoDB version: ${serverStatus.version}`);
+    console.log(
+      `- Connections: ${serverStatus.connections.current} current / ${serverStatus.connections.available} available`
+    );
+    console.log(`- Uptime: ${Math.floor(serverStatus.uptime / 86400)} days`);
+  } catch (error) {
+    console.error("\n❌ Error during diagnostics:", error.message);
+
+    if (error.name === "MongoServerSelectionError") {
+      console.log("\n🔍 Possible issues:");
+      console.log("1. Network connectivity problems");
+      console.log("2. MongoDB Atlas service might be down");
+      console.log("3. IP address might not be whitelisted");
+      console.log("4. Invalid credentials");
+    }
+  } finally {
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.disconnect();
+      console.log("\n✅ Cleanup: Disconnected from MongoDB");
+    }
   }
 }
 

@@ -1,288 +1,183 @@
 import { useState, useEffect } from "react";
 import { withAuth } from "../../../lib/withAuth";
-import Head from "next/head";
-import Link from "next/link";
-import { useDatabaseConnection } from "../../../contexts/DatabaseContext";
-import {
-  FiArrowLeft,
-  FiDatabase,
-  FiRefreshCw,
-  FiAlertTriangle,
-} from "react-icons/fi";
+import AdminLayout from "../../../components/layout/AdminLayout";
+import { FiDatabase, FiClock, FiUsers, FiList } from "react-icons/fi";
+import Loader from "../../../components/utils/Loader";
 
-function AdminDatabasePage() {
-  const [healthData, setHealthData] = useState(null);
+function DatabaseStatus() {
+  const [status, setStatus] = useState({
+    isConnected: false,
+    lastSync: null,
+    collections: {},
+    performance: {
+      avgResponseTime: null,
+      activeConnections: 0,
+    },
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { isConnected, connectionError, lastChecked, checkConnection } =
-    useDatabaseConnection();
 
-  // Initial data fetch
   useEffect(() => {
-    fetchHealthData();
+    fetchDatabaseStatus();
   }, []);
 
-  // Fetch system health data
-  async function fetchHealthData() {
+  const fetchDatabaseStatus = async () => {
     try {
       setLoading(true);
-      setError(null);
-
-      // Manually check connection first
-      await checkConnection(true);
-
-      // Then fetch detailed health data from the API
-      const response = await fetch(`/api/health?_t=${Date.now()}`);
+      const response = await fetch("/api/admin/database/status");
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to fetch health data");
-      }
+      if (!response.ok)
+        throw new Error(data.error || "Failed to fetch database status");
 
-      setHealthData(data);
+      setStatus(data);
+      setError(null);
     } catch (err) {
-      console.error("Error fetching health data:", err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  return (
-    <>
-      <Head>
-        <title>Database Management | Admin Dashboard</title>
-      </Head>
-
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center mb-6">
-          <Link
-            href="/dashboard/admin"
-            className="flex items-center text-gray-600 hover:text-blue-600 mr-4"
-          >
-            <FiArrowLeft className="mr-2" /> Back to Admin Dashboard
-          </Link>
-          <h1 className="text-2xl font-bold">Database Management</h1>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          {/* Overall Status Card */}
-          <div
-            className={`rounded-lg shadow p-6 ${
-              connectionError
-                ? "bg-red-50 border border-red-100"
-                : isConnected
-                  ? "bg-green-50 border border-green-100"
-                  : "bg-yellow-50 border border-yellow-100"
-            }`}
-          >
-            <div className="flex items-center mb-4">
-              <div
-                className={`p-2 rounded-full mr-3 ${
-                  connectionError
-                    ? "bg-red-100 text-red-600"
-                    : isConnected
-                      ? "bg-green-100 text-green-600"
-                      : "bg-yellow-100 text-yellow-600"
-                }`}
-              >
-                <FiDatabase size={20} />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold">Database Status</h2>
-                <p
-                  className={`${
-                    connectionError
-                      ? "text-red-700"
-                      : isConnected
-                        ? "text-green-700"
-                        : "text-yellow-700"
-                  }`}
-                >
-                  {connectionError
-                    ? "Connection Error"
-                    : isConnected
-                      ? "Connected"
-                      : "Connecting..."}
-                </p>
-              </div>
-            </div>
-
-            {connectionError && (
-              <div className="mt-2 p-3 bg-red-100 rounded-md text-red-700 text-sm">
-                <strong>Error:</strong> {connectionError}
-              </div>
-            )}
-
-            <div className="mt-4">
-              <button
-                onClick={fetchHealthData}
-                className="flex items-center justify-center w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                disabled={loading}
-              >
-                <FiRefreshCw
-                  className={`mr-2 ${loading ? "animate-spin" : ""}`}
-                />
-                {loading ? "Checking..." : "Check Connection"}
-              </button>
-            </div>
+  const StatusCard = ({ icon: Icon, title, value, subtitle, status }) => (
+    <div className="bg-white overflow-hidden shadow rounded-lg">
+      <div className="p-5">
+        <div className="flex items-center">
+          <div className="flex-shrink-0">
+            <Icon className="h-6 w-6 text-gray-400" />
           </div>
-
-          {/* Last Check Information */}
-          <div className="rounded-lg shadow p-6 bg-white">
-            <h2 className="text-xl font-semibold mb-3">Last Check</h2>
-            {lastChecked ? (
-              <>
-                <p className="text-gray-700">
-                  <strong>Timestamp:</strong>{" "}
-                  {new Date(lastChecked).toLocaleString()}
-                </p>
-                <p className="text-gray-700 mt-2">
-                  <strong>Status:</strong>{" "}
-                  {isConnected ? "Successful" : "Failed"}
-                </p>
-              </>
-            ) : (
-              <p className="text-gray-500">No recent checks recorded</p>
-            )}
+          <div className="ml-5 w-0 flex-1">
+            <dl>
+              <dt className="text-sm font-medium text-gray-500 truncate">
+                {title}
+              </dt>
+              <dd className="flex items-baseline">
+                <div className="text-2xl font-semibold text-gray-900">
+                  {value}
+                </div>
+                {subtitle && (
+                  <div className="ml-2 flex items-baseline text-sm font-semibold">
+                    {subtitle}
+                  </div>
+                )}
+              </dd>
+            </dl>
           </div>
-
-          {/* Environment Information */}
-          <div className="rounded-lg shadow p-6 bg-white">
-            <h2 className="text-xl font-semibold mb-3">Environment</h2>
-            {healthData ? (
-              <>
-                <p className="text-gray-700">
-                  <strong>Mode:</strong> {healthData.environment}
-                </p>
-                <p className="text-gray-700 mt-2">
-                  <strong>Version:</strong> {healthData.version}
-                </p>
-                <p className="text-gray-700 mt-2">
-                  <strong>Server Time:</strong>{" "}
-                  {new Date(healthData.timestamp).toLocaleString()}
-                </p>
-              </>
-            ) : (
-              <p className="text-gray-500">
-                {loading ? "Loading..." : "Information unavailable"}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Database Metrics */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Database Metrics</h2>
-
-          {loading ? (
-            <div className="flex justify-center items-center p-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          {status && (
+            <div
+              className={`ml-5 flex-shrink-0 ${status === "healthy" ? "text-green-500" : "text-red-500"}`}
+            >
+              <div className="h-3 w-3 rounded-full bg-current"></div>
             </div>
-          ) : error ? (
-            <div className="bg-red-50 border border-red-100 rounded-lg p-4 text-red-700 flex items-start">
-              <FiAlertTriangle size={20} className="mr-2 mt-1 flex-shrink-0" />
-              <div>
-                <p className="font-medium">Error fetching database metrics</p>
-                <p className="mt-1 text-sm">{error}</p>
-                <button
-                  onClick={fetchHealthData}
-                  className="mt-2 text-sm bg-red-100 px-3 py-1 rounded hover:bg-red-200"
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          ) : healthData?.database ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="border rounded-lg p-4">
-                <p className="text-sm text-gray-500">Connection Status</p>
-                <p
-                  className={`text-lg font-medium ${healthData.database.connected ? "text-green-600" : "text-red-600"}`}
-                >
-                  {healthData.database.status}
-                </p>
-              </div>
-
-              <div className="border rounded-lg p-4">
-                <p className="text-sm text-gray-500">Last Connected</p>
-                <p className="text-lg font-medium">
-                  {healthData.database.lastConnection
-                    ? new Date(
-                        healthData.database.lastConnection
-                      ).toLocaleString()
-                    : "N/A"}
-                </p>
-              </div>
-
-              <div className="border rounded-lg p-4">
-                <p className="text-sm text-gray-500">Reconnect Attempts</p>
-                <p className="text-lg font-medium">
-                  {healthData.database.reconnectAttempts || 0}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-gray-500">No database metrics available</p>
           )}
         </div>
-
-        {/* Troubleshooting Actions */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <h2 className="text-xl font-semibold mb-4">
-            Troubleshooting Actions
-          </h2>
-
-          <div className="space-y-3">
-            <button
-              onClick={fetchHealthData}
-              className="w-full sm:w-auto px-4 py-2 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-            >
-              Refresh Connection Status
-            </button>
-
-            <button
-              onClick={() => {
-                // Force reload database health endpoint
-                fetch("/api/health?force=true");
-                setTimeout(fetchHealthData, 1000);
-              }}
-              className="w-full sm:w-auto px-4 py-2 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200"
-            >
-              Force Reconnection Attempt
-            </button>
-
-            <Link
-              href="/api/health"
-              target="_blank"
-              className="inline-block w-full sm:w-auto px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-center"
-            >
-              View Raw Health Data
-            </Link>
-          </div>
-
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium mb-2">Connection Troubleshooting</h3>
-            <ul className="list-disc list-inside space-y-2 text-sm text-gray-600">
-              <li>Verify that MongoDB is running and accessible</li>
-              <li>Check that environment variables are properly configured</li>
-              <li>
-                Ensure network connectivity between the application and the
-                database
-              </li>
-              <li>
-                Review database logs for any authentication or authorization
-                issues
-              </li>
-            </ul>
-          </div>
-        </div>
       </div>
-    </>
+    </div>
+  );
+
+  return (
+    <AdminLayout title="Database Status">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-2xl font-semibold text-gray-900">
+            System Status
+          </h1>
+          <button
+            onClick={fetchDatabaseStatus}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Refresh Status
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader size="large" />
+          </div>
+        ) : error ? (
+          <div className="rounded-md bg-red-50 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg
+                  className="h-5 w-5 text-red-400"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Error</h3>
+                <div className="mt-2 text-sm text-red-700">{error}</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <StatusCard
+                icon={FiDatabase}
+                title="Database Connection"
+                value={status.isConnected ? "Connected" : "Disconnected"}
+                status={status.isConnected ? "healthy" : "error"}
+              />
+              <StatusCard
+                icon={FiClock}
+                title="Average Response Time"
+                value={`${status.performance.avgResponseTime || 0}ms`}
+                status={
+                  status.performance.avgResponseTime < 100 ? "healthy" : "error"
+                }
+              />
+              <StatusCard
+                icon={FiDatabase}
+                title="Active Connections"
+                value={status.performance.activeConnections}
+                status={
+                  status.performance.activeConnections < 100
+                    ? "healthy"
+                    : "error"
+                }
+              />
+            </div>
+
+            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+              <div className="px-4 py-5 sm:px-6">
+                <h2 className="text-lg leading-6 font-medium text-gray-900">
+                  Collection Statistics
+                </h2>
+              </div>
+              <div className="border-t border-gray-200">
+                <dl>
+                  {Object.entries(status.collections).map(
+                    ([collection, count], idx) => (
+                      <div
+                        key={collection}
+                        className={`${idx % 2 === 0 ? "bg-gray-50" : "bg-white"} px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6`}
+                      >
+                        <dt className="text-sm font-medium text-gray-500">
+                          {collection}
+                        </dt>
+                        <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                          {count} documents
+                        </dd>
+                      </div>
+                    )
+                  )}
+                </dl>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </AdminLayout>
   );
 }
 
-// Only allow admin access to this page
 export const getServerSideProps = withAuth({ role: "admin" });
 
-export default AdminDatabasePage;
+export default DatabaseStatus;

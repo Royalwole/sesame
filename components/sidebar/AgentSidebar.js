@@ -5,11 +5,12 @@ import { useClerk } from "@clerk/nextjs"; // Import useClerk hook
 import {
   FiHome,
   FiList,
-  FiPlusSquare,
+  FiPlusCircle,
   FiUser,
   FiSettings,
   FiHelpCircle,
   FiLogOut,
+  FiBarChart2,
 } from "react-icons/fi";
 
 export default function AgentSidebar() {
@@ -25,11 +26,20 @@ export default function AgentSidebar() {
   // Menu items with icons and paths
   const menuItems = [
     { label: "Dashboard", icon: <FiHome />, path: "/dashboard/agent" },
-    { label: "Listings", icon: <FiList />, path: "/dashboard/agent/listings" },
+    {
+      label: "My Listings",
+      icon: <FiList />,
+      path: "/dashboard/agent/listings",
+    },
     {
       label: "Create Listing",
-      icon: <FiPlusSquare />,
+      icon: <FiPlusCircle />,
       path: "/dashboard/agent/listings/create",
+    },
+    {
+      label: "Stats Analysis",
+      icon: <FiBarChart2 />,
+      path: "/dashboard/agent/stats",
     },
     { label: "Profile", icon: <FiUser />, path: "/dashboard/agent/profile" },
     {

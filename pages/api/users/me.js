@@ -1,6 +1,7 @@
-import { connectDB, disconnectDB } from "../../../lib/db";
+import { connectDB, disconnectDB, checkDBConnection } from "../../../lib/db";
 import { withJsonResponse } from "../../../lib/api/middleware";
 import { getAuth } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs";
 import User from "../../../models/User";
 
 async function handler(req, res) {
@@ -18,52 +19,72 @@ async function handler(req, res) {
     });
   }
 
-  let dbConnection = false;
+  let retryCount = 0;
+  const maxRetries = 3;
 
-  try {
-    // Get authenticated user from Clerk
-    const auth = getAuth(req);
-
-    // Check if auth exists
-    if (!auth?.userId) {
-      console.log(`[${requestId}] No userId in auth object`);
-      return res.status(401).json({
-        success: false,
-        error: "Unauthorized",
-        message: "No authenticated user found",
-        requestId,
-      });
-    }
-
-    console.log(`[${requestId}] Fetching user with clerkId: ${auth.userId}`);
-
+  while (retryCount < maxRetries) {
     try {
-      // Connect to database
-      console.log(`[${requestId}] Connecting to database...`);
-      await connectDB();
-      dbConnection = true;
+      // Get authenticated user from Clerk
+      const auth = getAuth(req);
+
+      // Check if auth exists
+      if (!auth?.userId) {
+        console.log(`[${requestId}] No userId in auth object`);
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized",
+          message: "No authenticated user found",
+          requestId,
+        });
+      }
+
+      console.log(`[${requestId}] Fetching user with clerkId: ${auth.userId}`);
+
+      // Check database connection first with increased timeout
+      const dbStatus = await checkDBConnection();
+      if (!dbStatus.isConnected) {
+        console.log(
+          `[${requestId}] Database connection check failed, retrying...`
+        );
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        retryCount++;
+        continue;
+      }
+
+      // No need to explicitly connect if checkDBConnection succeeded
       console.log(`[${requestId}] Database connected`);
 
       // Find user in database
       console.log(
         `[${requestId}] Looking for user with clerkId: ${auth.userId}`
       );
-      const user = await User.findOne({ clerkId: auth.userId }).lean();
+      let user = await User.findOne({ clerkId: auth.userId }).lean();
 
-      // If user not found, return error
+      // If user not found, create a new user
       if (!user) {
-        console.log(
-          `[${requestId}] User not found for clerkId: ${auth.userId}, returning 404`
-        );
-        return res.status(404).json({
-          success: false,
-          error: "User not found in database",
-          message: "Please ensure your account is properly set up",
-          requestId,
+        console.log(`[${requestId}] User not found, creating new user record`);
+
+        // Get user data from Clerk
+        const clerkUser = await clerkClient.users.getUser(auth.userId);
+
+        // Create new user with data from Clerk
+        const newUser = new User({
+          clerkId: auth.userId,
+          firstName: clerkUser.firstName || "",
+          lastName: clerkUser.lastName || "",
+          email: clerkUser.emailAddresses[0]?.emailAddress || "",
+          profileImage: clerkUser.imageUrl || "",
+          role: "user", // Default role
+          approved: true, // Regular users are approved by default
         });
+
+        await newUser.save();
+        user = newUser.toObject();
+        console.log(`[${requestId}] Created new user with ID: ${user._id}`);
       }
 
-      console.log(`[${requestId}] User found with role: ${user.role}`);
+      console.log(`[${requestId}] User found/created with role: ${user.role}`);
 
       // Return successful response with user data
       return res.status(200).json({
@@ -83,39 +104,31 @@ async function handler(req, res) {
           agentDetails: user.agentDetails || null,
         },
       });
-    } catch (dbError) {
-      console.error(`[${requestId}] Database error:`, dbError);
+    } catch (error) {
+      console.error(
+        `[${requestId}] Error in /api/users/me (attempt ${retryCount + 1}):`,
+        error
+      );
+
+      // If we haven't reached max retries, wait and try again
+      if (retryCount < maxRetries - 1) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+        console.log(`[${requestId}] Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        retryCount++;
+        continue;
+      }
+
+      // If we've exhausted retries, return error with more specific message
       return res.status(503).json({
         success: false,
-        error: "Database connection failed",
-        message: "We're experiencing database issues. Please try again later.",
+        error: "Service temporarily unavailable",
+        message:
+          "Database connection issue. Please try again in a few moments.",
         details:
-          process.env.NODE_ENV === "development" ? dbError.message : undefined,
+          process.env.NODE_ENV === "development" ? error.message : undefined,
         requestId,
       });
-    }
-  } catch (error) {
-    console.error(`[${requestId}] General error in /api/users/me:`, error);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to fetch user data",
-      message: "An unexpected error occurred",
-      details:
-        process.env.NODE_ENV === "development" ? error.message : undefined,
-      requestId,
-    });
-  } finally {
-    // Disconnect from database if we connected
-    if (dbConnection) {
-      try {
-        await disconnectDB();
-        console.log(`[${requestId}] Database disconnected`);
-      } catch (disconnectError) {
-        console.error(
-          `[${requestId}] Error disconnecting from database:`,
-          disconnectError
-        );
-      }
     }
   }
 }

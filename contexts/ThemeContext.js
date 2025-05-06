@@ -1,69 +1,59 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useHydration } from "../lib/useHydration";
 
 // Create context
-const ThemeContext = createContext();
+const ThemeContext = createContext({
+  theme: "light",
+  setTheme: () => {},
+});
 
 export function ThemeProvider({ children }) {
-  // Check for system preference or saved preference
-  const getInitialTheme = () => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
-      if (saved) return saved;
-      
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      return prefersDark ? 'dark' : 'light';
-    }
-    
-    // Default to light theme
-    return 'light';
-  };
-  
-  const [theme, setTheme] = useState('light');
-  
-  // Initialize theme on component mount
+  const [theme, setTheme] = useState("light");
+  const isHydrated = useHydration();
+
+  // Update theme on component mount
   useEffect(() => {
-    setTheme(getInitialTheme());
-  }, []);
-  
-  // Update theme when it changes
+    if (!isHydrated) return;
+
+    // Get stored theme or system preference
+    const storedTheme = localStorage.getItem("theme");
+    if (storedTheme) {
+      setTheme(storedTheme);
+    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
+    }
+  }, [isHydrated]);
+
+  // Update localStorage and document class when theme changes
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const root = window.document.documentElement;
-      
-      // Remove old theme class
-      root.classList.remove('light', 'dark');
-      
-      // Add new theme class
-      root.classList.add(theme);
-      
-      // Save to localStorage
-      localStorage.setItem('theme', theme);
-    }
-  }, [theme]);
-  
-  // Toggle between light and dark
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
-  };
-  
-  // Set theme directly
-  const setThemeMode = (mode) => {
-    if (mode === 'light' || mode === 'dark') {
-      setTheme(mode);
-    }
-  };
-  
-  const value = {
-    theme,
-    isDark: theme === 'dark',
-    toggleTheme,
-    setTheme: setThemeMode
-  };
-  
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+    if (!isHydrated) return;
+
+    localStorage.setItem("theme", theme);
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(theme);
+  }, [theme, isHydrated]);
+
+  // During SSR or before hydration, return default theme
+  if (!isHydrated) {
+    return (
+      <ThemeContext.Provider value={{ theme: "light", setTheme: () => {} }}>
+        {children}
+      </ThemeContext.Provider>
+    );
+  }
+
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
 }
 
 // Custom hook to use the theme context
-export const useTheme = () => useContext(ThemeContext);
-
-export default ThemeContext;
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error("useTheme must be used within a ThemeProvider");
+  }
+  return context;
+}

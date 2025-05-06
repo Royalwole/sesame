@@ -1,4 +1,5 @@
-import { clerkMiddleware, getAuth } from "@clerk/nextjs/server";
+// Middleware Configuration
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 // Configuration for public routes and authentication
@@ -89,7 +90,6 @@ export default clerkMiddleware((auth, request) => {
   return NextResponse.next();
 });
 
-// Configure matcher to include only the routes we want to protect
 export const config = {
   matcher: [
     // Match all except static assets

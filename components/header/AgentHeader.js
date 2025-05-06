@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/router";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { FiHome, FiBell, FiMessageCircle } from "react-icons/fi";
@@ -16,7 +17,15 @@ export default function AgentHeader() {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link href="/">
-                <span className="text-2xl font-bold text-wine">TopDial</span>
+                <div className="relative">
+                  <Image
+                    src="/logo.svg"
+                    alt="Topdial.ng"
+                    width={120}
+                    height={38}
+                  />
+                  <div className="absolute -bottom-1 left-0 w-10 h-0.5 bg-gradient-to-r from-amber-400 to-amber-300"></div>
+                </div>
               </Link>
             </div>
           </div>

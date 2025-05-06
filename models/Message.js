@@ -1,54 +1,95 @@
-const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
+import mongoose from "mongoose";
 
-const messageSchema = new Schema({
-  sender: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Sender is required']
+const messageSchema = new mongoose.Schema(
+  {
+    listing: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Listing",
+      required: true,
+    },
+    sender: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false, // Optional for guest inquiries
+    },
+    receiver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false, // Will be populated with listing agent
+    },
+    name: {
+      type: String,
+      required: function () {
+        return !this.sender; // Required only for guest messages
+      },
+    },
+    email: {
+      type: String,
+      required: function () {
+        return !this.sender; // Required only for guest messages
+      },
+    },
+    phone: String,
+    message: {
+      type: String,
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["inquiry", "response", "chat"],
+      default: "inquiry",
+    },
+    read: {
+      type: Boolean,
+      default: false,
+    },
+    readAt: Date,
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
-  recipient: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: [true, 'Recipient is required']
-  },
-  listing: {
-    type: Schema.Types.ObjectId,
-    ref: 'Listing'
-  },
-  message: {
-    type: String,
-    required: [true, 'Message content is required'],
-    trim: true
-  },
-  read: {
-    type: Boolean,
-    default: false
-  },
-  created_at: {
-    type: Date,
-    default: Date.now,
-    immutable: true
+  {
+    timestamps: true,
   }
-}, {
-  timestamps: {
-    createdAt: 'created_at',
-    updatedAt: false // No need for updated_at as messages don't get updated
-  },
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+);
+
+// Update agent's unread count when a new message is created
+messageSchema.post("save", async function (doc) {
+  if (doc.receiver && !doc.read) {
+    const User = mongoose.model("User");
+    await User.findByIdAndUpdate(doc.receiver, {
+      $inc: { unreadMessages: 1 },
+    });
+  }
 });
 
-// Indexes for efficient querying
-messageSchema.index({ sender: 1, recipient: 1 });
-messageSchema.index({ recipient: 1, read: 1 });
+// Update agent's unread count when a message is marked as read
+messageSchema.pre("save", async function (next) {
+  if (this.isModified("read") && this.read && this.receiver) {
+    const User = mongoose.model("User");
+    await User.findByIdAndUpdate(this.receiver, {
+      $inc: { unreadMessages: -1 },
+    });
+  }
+  next();
+});
 
-// Static method to get unread message count
-messageSchema.statics.getUnreadCount = async function(userId) {
-  return this.countDocuments({
-    recipient: userId,
-    read: false
-  });
-};
+// Ensure agent's unread count stays accurate when messages are deleted
+messageSchema.pre("remove", async function (next) {
+  if (this.receiver && !this.read) {
+    const User = mongoose.model("User");
+    await User.findByIdAndUpdate(this.receiver, {
+      $inc: { unreadMessages: -1 },
+    });
+  }
+  next();
+});
 
-module.exports = mongoose.models.Message || mongoose.model('Message', messageSchema);
+// Check if model exists before defining
+export default mongoose.models.Message ||
+  mongoose.model("Message", messageSchema);

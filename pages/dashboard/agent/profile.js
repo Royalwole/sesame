@@ -2,7 +2,7 @@ import { useState } from "react";
 import { withAgentAuth } from "../../../lib/withAuth";
 import { useAuth } from "../../../contexts/AuthContext";
 import Head from "next/head";
-import Layout from "../../../components/layout/AgentLayout";
+import AgentLayout from "../../../components/layout/AgentLayout";
 import toast from "react-hot-toast";
 import { FiEdit, FiSave } from "react-icons/fi";
 
@@ -49,7 +49,7 @@ export default function AgentProfile() {
   };
 
   return (
-    <Layout>
+    <AgentLayout>
       <Head>
         <title>Agent Profile - TopDial</title>
       </Head>
@@ -258,7 +258,7 @@ export default function AgentProfile() {
           )}
         </div>
       </div>
-    </Layout>
+    </AgentLayout>
   );
 }
 

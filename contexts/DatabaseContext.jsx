@@ -1,12 +1,17 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { checkDBConnection, connectDB } from "../lib/db";
 import { loadEnvConfig } from "../lib/env-loader";
+import { useHydration } from '../lib/useHydration';
 
 // Check if running on client or server
 const isServer = typeof window === 'undefined';
 
 // Create the context
-const DatabaseContext = createContext();
+const DatabaseContext = createContext({
+  isConnected: false,
+  isLoading: true,
+  error: null,
+});
 
 // Connection status constants
 const CONNECTION_STATUS = {
@@ -26,14 +31,15 @@ export function DatabaseProvider({ children }) {
   }, []);
 
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(true);
-  const [connectionError, setConnectionError] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [lastChecked, setLastChecked] = useState(null);
   const [checkCount, setCheckCount] = useState(0);
   const [connectionDetails, setConnectionDetails] = useState({});
   const [connectionTimeoutId, setConnectionTimeoutId] = useState(null);
   const [recoveryAttempts, setRecoveryAttempts] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState(CONNECTION_STATUS.CONNECTING);
+  const isHydrated = useHydration();
 
   // Categorize database errors for better handling
   const categorizeDBError = (error) => {
@@ -78,15 +84,15 @@ export function DatabaseProvider({ children }) {
       return;
     }
     
-    setIsConnecting(true);
+    setIsLoading(true);
     setConnectionStatus(CONNECTION_STATUS.CONNECTING);
 
     // Set a timeout to prevent hanging on connection check
     const timeoutId = setTimeout(() => {
-      setIsConnecting(false);
+      setIsLoading(false);
       setIsConnected(false);
       setConnectionStatus(CONNECTION_STATUS.ERROR);
-      setConnectionError("Connection check timed out");
+      setError("Connection check timed out");
       setLastChecked(new Date());
     }, 5000); // 5-second timeout
 
@@ -104,7 +110,7 @@ export function DatabaseProvider({ children }) {
       
       if (!status.isConnected && status.error) {
         const categorizedError = categorizeDBError(status.error);
-        setConnectionError(categorizedError.message);
+        setError(categorizedError.message);
         setConnectionStatus(CONNECTION_STATUS.ERROR);
       } else {
         setConnectionStatus(CONNECTION_STATUS.CONNECTED);
@@ -118,7 +124,7 @@ export function DatabaseProvider({ children }) {
       const categorizedError = categorizeDBError(err);
       setIsConnected(false);
       setConnectionStatus(CONNECTION_STATUS.ERROR);
-      setConnectionError(categorizedError.message);
+      setError(categorizedError.message);
       console.error(`Database connection check failed [${categorizedError.type}]:`, err.message);
       
       // Attempt recovery if the error is recoverable
@@ -132,7 +138,7 @@ export function DatabaseProvider({ children }) {
         }, delay);
       }
     } finally {
-      setIsConnecting(false);
+      setIsLoading(false);
       setLastChecked(new Date());
       setCheckCount(prev => prev + 1);
     }
@@ -144,7 +150,7 @@ export function DatabaseProvider({ children }) {
     if (!isServer) {
       // Set a state that indicates we're in client mode
       setConnectionStatus(CONNECTION_STATUS.DISCONNECTED);
-      setIsConnecting(false);
+      setIsLoading(false);
       console.log("📱 Client-side rendering detected - database connections will be handled server-side");
       return;
     }
@@ -154,16 +160,16 @@ export function DatabaseProvider({ children }) {
     const initialCheck = async () => {
       try {
         console.log("🔄 Attempting initial database connection...");
-        setIsConnecting(true);
+        setIsLoading(true);
         
         // Create connection timeout to prevent hanging
         const timeout = setTimeout(() => {
           if (mounted) {
             console.warn("⚠️ Database connection timed out");
-            setIsConnecting(false);
+            setIsLoading(false);
             setIsConnected(false);
             setConnectionStatus(CONNECTION_STATUS.ERROR);
-            setConnectionError("Connection attempt timed out");
+            setError("Connection attempt timed out");
             setLastChecked(new Date());
           }
         }, 8000); // 8-second timeout
@@ -178,9 +184,9 @@ export function DatabaseProvider({ children }) {
         
         if (mounted) {
           setIsConnected(true);
-          setConnectionError(null);
+          setError(null);
           setConnectionStatus(CONNECTION_STATUS.CONNECTED);
-          setIsConnecting(false);
+          setIsLoading(false);
           setLastChecked(new Date());
         }
       } catch (error) {
@@ -195,8 +201,8 @@ export function DatabaseProvider({ children }) {
           const categorizedError = categorizeDBError(error);
           setIsConnected(false);
           setConnectionStatus(CONNECTION_STATUS.ERROR);
-          setConnectionError(categorizedError.message);
-          setIsConnecting(false);
+          setError(categorizedError.message);
+          setIsLoading(false);
           setLastChecked(new Date());
         }
       }
@@ -229,16 +235,16 @@ export function DatabaseProvider({ children }) {
 
   // Handle manual reconnect with timeout
   const handleReconnect = async () => {
-    setIsConnecting(true);
+    setIsLoading(true);
     setConnectionStatus(CONNECTION_STATUS.CONNECTING);
-    setConnectionError(null);
+    setError(null);
     
     // Set a timeout to prevent hanging on reconnect
     const timeoutId = setTimeout(() => {
-      setIsConnecting(false);
+      setIsLoading(false);
       setIsConnected(false);
       setConnectionStatus(CONNECTION_STATUS.ERROR);
-      setConnectionError("Reconnection attempt timed out");
+      setError("Reconnection attempt timed out");
       setLastChecked(new Date());
     }, 5000); // 5-second timeout
     
@@ -252,19 +258,28 @@ export function DatabaseProvider({ children }) {
       const categorizedError = categorizeDBError(error);
       setIsConnected(false);
       setConnectionStatus(CONNECTION_STATUS.ERROR);
-      setConnectionError(categorizedError.message);
+      setError(categorizedError.message);
     } finally {
-      setIsConnecting(false);
+      setIsLoading(false);
       setLastChecked(new Date());
       setCheckCount(prev => prev + 1);
     }
   };
 
+  // During SSR or before hydration, return a minimal context
+  if (!isHydrated) {
+    return (
+      <DatabaseContext.Provider value={{ isConnected: false, isLoading: true, error: null }}>
+        {children}
+      </DatabaseContext.Provider>
+    );
+  }
+
   // Context value
   const contextValue = {
     isConnected,
-    isConnecting,
-    connectionError,
+    isLoading,
+    error,
     lastChecked,
     checkCount,
     connectionDetails,

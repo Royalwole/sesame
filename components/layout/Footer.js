@@ -10,7 +10,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Company Info */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">TopDial</h3>
+            <h3 className="text-lg font-semibold mb-4">Topdial.ng</h3>
             <p className="text-gray-300 mb-4">
               Your trusted platform for premium property listings in Nigeria.
             </p>
@@ -68,13 +68,16 @@ export default function Footer() {
             <h3 className="text-lg font-semibold mb-4">Information</h3>
             <ul className="space-y-2">
               <li>
-                <Link href="/terms" className="text-gray-300 hover:text-white">
-                  Terms of Service
+                <Link
+                  href="/static/terms"
+                  className="text-gray-300 hover:text-white"
+                >
+                  Terms
                 </Link>
               </li>
               <li>
                 <Link
-                  href="/privacy"
+                  href="/static/privacy"
                   className="text-gray-300 hover:text-white"
                 >
                   Privacy Policy
@@ -101,7 +104,7 @@ export default function Footer() {
 
         {/* Copyright */}
         <div className="border-t border-gray-700 mt-10 pt-6 text-center text-gray-400">
-          <p>© {year} TopDial. All rights reserved.</p>
+          <p>© {year} Topdial Services LTD. All rights reserved.</p>
         </div>
       </div>
     </footer>

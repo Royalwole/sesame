@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import Head from "next/head";
-import Layout from "../../../components/layout/AgentLayout";
+import AgentLayout from "../../../components/layout/AgentLayout";
 import { FiAlertTriangle } from "react-icons/fi";
 
 export default function Custom404() {
@@ -14,7 +14,7 @@ export default function Custom404() {
   }, [router.asPath]);
 
   return (
-    <Layout>
+    <AgentLayout>
       <Head>
         <title>Page Not Found - Agent Dashboard</title>
       </Head>
@@ -44,6 +44,6 @@ export default function Custom404() {
           </div>
         </div>
       </div>
-    </Layout>
+    </AgentLayout>
   );
 }

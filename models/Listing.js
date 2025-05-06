@@ -5,6 +5,17 @@ const imageSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  path: {
+    type: String,
+    required: true, // Firebase Storage path
+  },
+  originalName: String,
+  size: Number,
+  contentType: String,
+  uploadedAt: {
+    type: Date,
+    default: Date.now,
+  },
   caption: {
     type: String,
     default: "",
@@ -91,10 +102,29 @@ const listingSchema = new mongoose.Schema(
     views: {
       type: Number,
       default: 0,
+      min: 0,
     },
+    inquiries: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    inquiryMessages: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Message",
+      },
+    ],
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: function (doc, ret) {
+        ret.viewCount = ret.views || 0;
+        ret.inquiryCount = ret.inquiries || 0;
+      },
+    },
   }
 );
 
@@ -160,6 +190,64 @@ listingSchema.post("validate", function (error, _, next) {
   }
 
   next(error);
+});
+
+// Add method to handle image URLs
+listingSchema.methods.getImageUrls = async function () {
+  const { getStorageUrl } = require("../lib/storage");
+
+  return Promise.all(
+    this.images.map(async (image) => {
+      try {
+        if (image.url.startsWith("http")) {
+          return image.url;
+        }
+        return await getStorageUrl(image.path);
+      } catch (error) {
+        console.error("Error getting image URL:", error);
+        return "/images/placeholder-property.svg";
+      }
+    })
+  );
+};
+
+// Add method to increment views
+listingSchema.methods.incrementViews = async function () {
+  this.views = (this.views || 0) + 1;
+  await this.save();
+  return this.views;
+};
+
+// Add method to increment inquiries
+listingSchema.methods.incrementInquiries = async function () {
+  this.inquiries = (this.inquiries || 0) + 1;
+  await this.save();
+  return this.inquiries;
+};
+
+// Ensure agent's stats are updated when a listing is deleted
+listingSchema.pre("remove", async function (next) {
+  if (this.agent) {
+    const User = mongoose.model("User");
+    await User.findByIdAndUpdate(this.agent, {
+      $inc: {
+        "agentStats.totalListings": -1,
+        "agentStats.totalViews": -(this.views || 0),
+        "agentStats.totalInquiries": -(this.inquiries || 0),
+      },
+    });
+  }
+  next();
+});
+
+// Add aggregate stats virtual
+listingSchema.virtual("stats").get(function () {
+  return {
+    views: this.views || 0,
+    inquiries: this.inquiries || 0,
+    hasInquiries: (this.inquiries || 0) > 0,
+    messagesCount: this.inquiryMessages?.length || 0,
+  };
 });
 
 // Create text index for search

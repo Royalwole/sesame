@@ -1,71 +1,41 @@
-import { connectDB, disconnectDB } from "../../../lib/db";
+import { withAuth } from "../../../lib/withAuth";
+import { connectDB } from "../../../lib/db";
 import Listing from "../../../models/Listing";
-import User from "../../../models/User";
-import { getAuth } from "@clerk/nextjs/server";
-import {
-  sendSuccess,
-  sendError,
-  sendUnauthorized,
-} from "../../../lib/api-response";
-import { requireAgentAuth } from "../../../middlewares/authMiddleware";
 
-const handler = async (req, res) => {
+async function handler(req, res) {
   if (req.method !== "GET") {
-    return sendError(res, "Method not allowed", 405);
+    return res
+      .status(405)
+      .json({ success: false, error: "Method not allowed" });
   }
-
-  let dbConnection = false;
 
   try {
-    // Get authenticated user
-    const auth = getAuth(req);
-    if (!auth?.userId) {
-      return sendUnauthorized(res);
-    }
-
-    // Connect to database
     await connectDB();
-    dbConnection = true;
 
-    // Get user from database
-    const user = await User.findOne({ clerkId: auth.userId });
-    if (!user) {
-      return sendError(res, "User not found", 404);
-    }
+    // Get the agent's ID from the authenticated user
+    const agentId = req.user._id;
 
-    // Pagination parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
-    const skip = (page - 1) * limit;
+    // Fetch all listings for this agent
+    const listings = await Listing.find({
+      agent: agentId,
+    }).sort({ createdAt: -1 }); // Most recent first
 
-    // Fetch listings created by the agent
-    const listings = await Listing.find({ createdBy: user._id })
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 })
-      .lean();
-
-    // Get total count for pagination
-    const total = await Listing.countDocuments({ createdBy: user._id });
-    const pages = Math.ceil(total / limit);
-
-    // Return listings and pagination info
-    return sendSuccess(
-      res,
-      {
-        listings,
-        pagination: { total, page, limit, pages },
-      },
-      "Agent listings retrieved"
-    );
+    // Return the listings and let the frontend calculate stats
+    return res.status(200).json({
+      success: true,
+      listings,
+    });
   } catch (error) {
-    console.error("Error in agent listings API:", error);
-    return sendServerError(res, error.message);
-  } finally {
-    if (dbConnection) {
-      await disconnectDB();
-    }
+    console.error("Error fetching agent listings:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to fetch listings",
+    });
   }
-};
+}
 
-export default requireAgentAuth(handler);
+// Export with auth middleware that requires agent role
+export default withAuth({
+  handler,
+  role: "agent",
+});

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import Head from "next/head";
 import { withAuth } from "../../../lib/withAuth";
-import { AuthGuard } from "../../../lib/withAuth";
+import AdminLayout from "../../../components/layout/AdminLayout";
 import Link from "next/link";
 import {
   FiUsers,
@@ -9,252 +8,212 @@ import {
   FiList,
   FiSettings,
   FiDatabase,
+  FiRefreshCw,
+  FiAlertCircle,
 } from "react-icons/fi";
+import Loader from "../../../components/utils/Loader";
 
 function AdminDashboard() {
   const [stats, setStats] = useState({
     users: 0,
-    agents: 0,
-    listings: 0,
-    pendingReviews: 0,
+    activeAgents: 0,
+    pendingAgents: 0,
+    totalAgents: 0,
+    activeListings: 0,
+    pendingListings: 0,
+    totalListings: 0,
+    recentUsers: [],
+    recentListings: [],
+    lastUpdated: null,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/admin/stats");
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.error || "Failed to fetch statistics");
+      }
+
+      setStats(data.stats);
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Fetch admin dashboard statistics
-    const fetchStats = async () => {
-      try {
-        const res = await fetch("/api/admin/stats");
-        const data = await res.json();
-
-        if (data.success) {
-          setStats(data.stats);
-        }
-      } catch (error) {
-        console.error("Error fetching admin stats:", error);
-      }
-    };
-
     fetchStats();
   }, []);
 
   return (
-    <AuthGuard role="admin">
-      <Head>
-        <title>Admin Dashboard | TopDial</title>
-      </Head>
-
-      <div className="space-y-6">
+    <AdminLayout title="Admin Dashboard">
+      <div className="space-y-6 px-4 py-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            Administrator Access
-          </span>
-        </div>
-
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-blue-500 p-3 text-white">
-                  <FiUsers className="h-6 w-6" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Total Users
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.users}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-green-500 p-3 text-white">
-                  <FiUsers className="h-6 w-6" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Active Agents
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.agents}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-yellow-500 p-3 text-white">
-                  <FiHome className="h-6 w-6" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Active Listings
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.listings}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow-sm rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 rounded-md bg-red-500 p-3 text-white">
-                  <FiList className="h-6 w-6" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Pending Reviews
-                    </dt>
-                    <dd className="text-2xl font-semibold text-gray-900">
-                      {stats.pendingReviews}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={fetchStats}
+              disabled={loading}
+              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+            >
+              <FiRefreshCw
+                className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </button>
+            <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+              Administrator Access
+            </span>
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="bg-white shadow-sm overflow-hidden sm:rounded-md">
-          <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
+        {error && (
+          <div className="rounded-md bg-red-50 p-4">
+            <div className="flex">
+              <FiAlertCircle className="h-5 w-5 text-red-400" />
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">
+                  Error loading dashboard
+                </h3>
+                <div className="mt-2 text-sm text-red-700">{error}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <StatsCard
+            title="Total Users"
+            value={stats.users}
+            loading={loading}
+          />
+          <StatsCard
+            title="Active Agents"
+            value={stats.activeAgents}
+            subtitle={`${stats.pendingAgents} pending approval`}
+            loading={loading}
+          />
+          <StatsCard
+            title="Active Listings"
+            value={stats.activeListings}
+            loading={loading}
+          />
+          <StatsCard
+            title="Pending Reviews"
+            value={stats.pendingListings}
+            loading={loading}
+          />
+        </div>
+
+        <div className="bg-white shadow rounded-lg">
+          <div className="p-6">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">
               Admin Actions
-            </h3>
+            </h2>
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {adminActions.map((action, index) => (
+                <li key={index}>
+                  <ActionCard
+                    href={action.href}
+                    icon={action.icon}
+                    title={action.title}
+                    description={action.description}
+                  />
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul role="list" className="divide-y divide-gray-200">
-            <li>
-              <Link
-                href="/dashboard/admin/users"
-                className="block hover:bg-gray-50"
-              >
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-blue-100 rounded-md p-2">
-                      <FiUsers className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        Manage Users
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        View and manage user accounts
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/dashboard/admin/agents"
-                className="block hover:bg-gray-50"
-              >
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-green-100 rounded-md p-2">
-                      <FiUsers className="h-5 w-5 text-green-600" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        Manage Agents
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Review agent applications and manage existing agents
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/dashboard/admin/listings"
-                className="block hover:bg-gray-50"
-              >
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-yellow-100 rounded-md p-2">
-                      <FiHome className="h-5 w-5 text-yellow-600" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        Manage Listings
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Review, edit and manage property listings
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/dashboard/admin/settings"
-                className="block hover:bg-gray-50"
-              >
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-purple-100 rounded-md p-2">
-                      <FiSettings className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        System Settings
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Configure application settings
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </li>
-            <li>
-              <Link href="/debug/db-status" className="block hover:bg-gray-50">
-                <div className="px-4 py-4 sm:px-6">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-gray-100 rounded-md p-2">
-                      <FiDatabase className="h-5 w-5 text-gray-600" />
-                    </div>
-                    <div className="ml-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        System Status
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Check database and system health
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </li>
-          </ul>
         </div>
       </div>
-    </AuthGuard>
+    </AdminLayout>
   );
 }
+
+// Stats Card Component
+function StatsCard({ title, value, subtitle }) {
+  return (
+    <div className="bg-white overflow-hidden shadow rounded-lg">
+      <div className="px-4 py-5 sm:p-6">
+        <div className="flex items-center">
+          <div className="flex-1">
+            <dl>
+              <dt className="text-sm font-medium text-gray-500 truncate">
+                {title}
+              </dt>
+              <dd className="mt-1 text-3xl font-semibold text-gray-900">
+                {value}
+              </dd>
+              {subtitle && (
+                <dt className="text-xs text-gray-500 mt-1">{subtitle}</dt>
+              )}
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Action Card Component
+function ActionCard({ href, icon, title, description }) {
+  return (
+    <Link href={href}>
+      <div className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow duration-200">
+        <div className="px-4 py-5 sm:p-6">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">{icon}</div>
+            <div className="ml-5">
+              <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+              <p className="mt-1 text-sm text-gray-500">{description}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// Admin Actions Configuration
+const adminActions = [
+  {
+    href: "/dashboard/admin/users",
+    icon: <FiUsers className="h-5 w-5 text-gray-600" />,
+    title: "Manage Users",
+    description: "View and manage user accounts",
+  },
+  {
+    href: "/dashboard/admin/agents",
+    icon: <FiUsers className="h-5 w-5 text-gray-600" />,
+    title: "Manage Agents",
+    description: "Review agent applications and manage existing agents",
+  },
+  {
+    href: "/dashboard/admin/listings",
+    icon: <FiList className="h-5 w-5 text-gray-600" />,
+    title: "Manage Listings",
+    description: "Review, edit and manage property listings",
+  },
+  {
+    href: "/dashboard/admin/settings",
+    icon: <FiSettings className="h-5 w-5 text-gray-600" />,
+    title: "System Settings",
+    description: "Configure application settings",
+  },
+  {
+    href: "/dashboard/admin/database",
+    icon: <FiDatabase className="h-5 w-5 text-gray-600" />,
+    title: "System Status",
+    description: "Check database and system health",
+  },
+];
 
 export default AdminDashboard;
 
