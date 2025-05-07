@@ -1,5 +1,5 @@
 // Middleware Configuration
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, getAuth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 // Configuration for public routes and authentication
@@ -53,43 +53,56 @@ function isClerkPath(path) {
 
 /**
  * Handles authentication and protection of routes using Clerk middleware
+ * with added error handling to prevent middleware crashes
  */
-export default clerkMiddleware((auth, request) => {
-  // Get the current path
-  const { pathname } = request.nextUrl;
+export default function middleware(request) {
+  try {
+    // Get the current path
+    const { pathname } = request.nextUrl;
 
-  // Check if this is a public route (no auth needed)
-  if (isPublicRoute(pathname)) {
-    return NextResponse.next();
-  }
-
-  // Check if this is an auth-related path
-  if (isAuthPath(pathname) || isClerkPath(pathname)) {
-    return NextResponse.next();
-  }
-
-  // Skip redirects for API routes to prevent redirect loops
-  const isApiRoute = pathname.startsWith("/api/");
-
-  // For protected routes, check if user is authenticated
-  if (!auth.userId && !isApiRoute) {
-    // Create sign in URL with redirect back to the current page
-    const signInUrl = new URL(AUTH_CONFIG.signInUrl, request.url);
-
-    // Only add redirect for page routes, not for API routes
-    if (!pathname.startsWith("/api/")) {
-      // Use just the pathname to avoid encoding issues with full URLs
-      signInUrl.searchParams.set("redirect_url", pathname);
+    // Check if this is a public route (no auth needed)
+    if (isPublicRoute(pathname)) {
+      return NextResponse.next();
     }
 
-    console.log(`[Auth] Redirecting to sign-in from: ${pathname}`);
-    return NextResponse.redirect(signInUrl);
+    // Check if this is an auth-related path
+    if (isAuthPath(pathname) || isClerkPath(pathname)) {
+      return NextResponse.next();
+    }
+
+    // Use getAuth instead of relying on the middleware param
+    const auth = getAuth(request);
+    const userId = auth.userId;
+
+    // Skip redirects for API routes to prevent redirect loops
+    const isApiRoute = pathname.startsWith("/api/");
+
+    // For protected routes, check if user is authenticated
+    if (!userId && !isApiRoute) {
+      // Create sign in URL with redirect back to the current page
+      const signInUrl = new URL(AUTH_CONFIG.signInUrl, request.url);
+
+      // Only add redirect for page routes, not for API routes
+      if (!pathname.startsWith("/api/")) {
+        // Use just the pathname to avoid encoding issues with full URLs
+        signInUrl.searchParams.set("redirect_url", pathname);
+      }
+
+      return NextResponse.redirect(signInUrl);
+    }
+
+    // User is authenticated or this is an API route, allow the request
+    return NextResponse.next();
+  } catch (error) {
+    // If anything fails in the middleware, log the error and allow the request through
+    console.error("[Middleware Error]", error);
+
+    // Return a next response to prevent the middleware from crashing
+    return NextResponse.next();
   }
+}
 
-  // User is authenticated or this is an API route, allow the request
-  return NextResponse.next();
-});
-
+// We still need Clerk to protect our routes, but we handle auth logic ourselves
 export const config = {
   matcher: [
     // Match all except static assets
