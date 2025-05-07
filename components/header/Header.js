@@ -23,6 +23,16 @@ export default function Header() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [router.pathname]);
+
+  const toggleMenu = () => {
+    console.log("Toggle menu clicked, current state:", isMenuOpen);
+    setIsMenuOpen((prevState) => !prevState);
+  };
+
   // Navigation links - customize as needed
   const navLinks = [
     { name: "Home", href: "/" },
@@ -125,13 +135,18 @@ export default function Header() {
             {/* Mobile menu button */}
             <div className="flex md:hidden">
               <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 rounded-md text-gray-500 hover:text-wine hover:bg-gray-100 focus:outline-none"
+                onClick={toggleMenu}
+                type="button"
+                aria-label={isMenuOpen ? "Close menu" : "Open menu"}
+                className="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-wine hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wine"
               >
+                <span className="sr-only">
+                  {isMenuOpen ? "Close main menu" : "Open main menu"}
+                </span>
                 {isMenuOpen ? (
-                  <FiX className="h-6 w-6" />
+                  <FiX className="block h-6 w-6" aria-hidden="true" />
                 ) : (
-                  <FiMenu className="h-6 w-6" />
+                  <FiMenu className="block h-6 w-6" aria-hidden="true" />
                 )}
               </button>
             </div>
@@ -140,62 +155,66 @@ export default function Header() {
       </div>
 
       {/* Mobile navigation */}
-      {isMenuOpen && (
-        <div className="md:hidden bg-white border-t border-gray-200">
-          <div className="pt-2 pb-4 space-y-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.name}
-                href={link.href}
-                className={`block pl-3 pr-4 py-2 text-base font-medium ${
-                  router.pathname === link.href
-                    ? "bg-wine/10 text-wine border-l-4 border-wine"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-wine"
-                }`}
-                onClick={() => setIsMenuOpen(false)}
-              >
-                {link.name}
-              </Link>
-            ))}
+      <div
+        className={`md:hidden bg-white border-t border-gray-200 absolute w-full transition-all duration-200 ease-in-out ${
+          isMenuOpen
+            ? "max-h-screen opacity-100"
+            : "max-h-0 opacity-0 overflow-hidden"
+        }`}
+      >
+        <div className="pt-2 pb-4 space-y-1">
+          {navLinks.map((link) => (
+            <Link
+              key={link.name}
+              href={link.href}
+              className={`block pl-3 pr-4 py-2 text-base font-medium ${
+                router.pathname === link.href
+                  ? "bg-wine/10 text-wine border-l-4 border-wine"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-wine"
+              }`}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              {link.name}
+            </Link>
+          ))}
 
-            {/* Auth links for mobile */}
-            {isSignedIn ? (
+          {/* Auth links for mobile */}
+          {isSignedIn ? (
+            <Link
+              href={
+                isAdmin
+                  ? "/dashboard/admin"
+                  : isAgent
+                    ? "/dashboard/agent"
+                    : "/dashboard"
+              }
+              className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <div className="flex items-center">
+                <FiUser className="mr-2" /> Dashboard
+              </div>
+            </Link>
+          ) : (
+            <>
               <Link
-                href={
-                  isAdmin
-                    ? "/dashboard/admin"
-                    : isAgent
-                      ? "/dashboard/agent"
-                      : "/dashboard"
-                }
+                href="/sign-in"
                 className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
                 onClick={() => setIsMenuOpen(false)}
               >
-                <div className="flex items-center">
-                  <FiUser className="mr-2" /> Dashboard
-                </div>
+                Sign In
               </Link>
-            ) : (
-              <>
-                <Link
-                  href="/sign-in"
-                  className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/sign-up"
-                  className="block pl-3 pr-4 py-2 text-base font-medium bg-gray-50 text-wine hover:bg-gray-100"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Sign Up
-                </Link>
-              </>
-            )}
-          </div>
+              <Link
+                href="/sign-up"
+                className="block pl-3 pr-4 py-2 text-base font-medium bg-gray-50 text-wine hover:bg-gray-100"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Sign Up
+              </Link>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </header>
   );
 }
