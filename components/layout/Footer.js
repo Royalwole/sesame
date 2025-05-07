@@ -97,14 +97,14 @@ export default function Footer() {
             <div className="space-y-2 text-gray-300">
               <p>Lagos, Nigeria</p>
               <p>Email: info@topdial.ng</p>
-              <p>Phone: +234 123 456 7890</p>
+              <p>Phone: +234 123 456 7990</p>
             </div>
           </div>
         </div>
 
         {/* Copyright */}
         <div className="border-t border-gray-700 mt-10 pt-6 text-center text-gray-400">
-          <p>© {year} Topdial Services LTD. All rights reserved.</p>
+          <p>© {year} Topdial Services. All rights reserved.</p>
         </div>
       </div>
     </footer>
