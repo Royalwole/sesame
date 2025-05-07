@@ -1,4 +1,4 @@
-import { put } from "@vercel/blob";
+import { uploadToStorage } from "../../../lib/storage";
 import { getAuth } from "@clerk/nextjs/server";
 import formidable from "formidable";
 import fs from "fs";
@@ -43,28 +43,38 @@ export default async function handler(req, res) {
     const userId = auth.userId;
     const timestamp = Date.now();
     const fileExt = file.originalFilename.split(".").pop();
-    const filePath = `${folder}/${userId}/${timestamp}-${file.newFilename}.${fileExt}`;
+    const filename = `${userId}_${timestamp}-${file.newFilename}.${fileExt}`;
 
     // Read the file content
     const content = await fs.promises.readFile(file.filepath);
 
-    // Upload to Vercel Blob
-    const { url, pathname } = await put(filePath, content, {
-      access: "public",
-      contentType: file.mimetype,
+    // Create a blob from the file content
+    const blob = new Blob([content], { type: file.mimetype });
+
+    // Upload to Firebase Storage
+    const uploadResult = await uploadToStorage(blob, filename, {
+      folder,
+      metadata: {
+        userId: userId,
+        originalName: file.originalFilename,
+      },
     });
+
+    if (!uploadResult.success) {
+      throw new Error(uploadResult.error || "Upload failed");
+    }
 
     // Return success response
     return res.status(200).json({
       success: true,
-      url,
-      pathname,
+      url: uploadResult.url,
+      pathname: uploadResult.path,
       filename: file.originalFilename,
       size: file.size,
       mimetype: file.mimetype,
     });
   } catch (error) {
-    console.error("Blob upload error:", error);
+    console.error("File upload error:", error);
     return res.status(500).json({ error: "Upload failed: " + error.message });
   }
 }

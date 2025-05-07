@@ -3,8 +3,10 @@ import User from "../../../models/User";
 import { requireAuth } from "../../../middlewares/authMiddleware";
 import { getAuth } from "@clerk/nextjs/server";
 import { IncomingForm } from "formidable";
-import { put } from "@vercel/blob";
 import path from "path";
+import { storage } from "../../../lib/firebase-config";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import fs from "fs";
 
 // Configure API route to handle file uploads
 export const config = {
@@ -71,15 +73,24 @@ async function handler(req, res) {
 
         if (file) {
           try {
+            // Read file content
+            const fileBuffer = fs.readFileSync(file.filepath);
+
+            // Generate a unique filename for Firebase Storage
             const fileExt = path.extname(file.originalFilename || "image.jpg");
             const fileName = `agent-profiles/${clerkId}-${Date.now()}${fileExt}`;
 
-            const blob = await put(fileName, file, {
-              access: "public",
+            // Create a storage reference
+            const storageRef = ref(storage, fileName);
+
+            // Upload to Firebase Storage
+            const snapshot = await uploadBytes(storageRef, fileBuffer, {
               contentType: file.mimetype || "image/jpeg",
             });
 
-            profileImageUrl = blob.url;
+            // Get download URL
+            profileImageUrl = await getDownloadURL(snapshot.ref);
+
             console.log("Profile image uploaded:", profileImageUrl);
           } catch (uploadError) {
             console.error("Error uploading profile image:", uploadError);

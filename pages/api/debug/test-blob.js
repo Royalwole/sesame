@@ -1,6 +1,7 @@
-import { put } from "@vercel/blob";
+import { storage } from "../../../lib/firebase-config";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import formidable from "formidable";
-import { createReadStream } from "fs";
+import { createReadStream, readFileSync } from "fs";
 
 export const config = {
   api: {
@@ -10,21 +11,24 @@ export const config = {
 
 export default async function handler(req, res) {
   try {
-    // If no BLOB token, fail fast
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    // If no Firebase Storage bucket, fail fast
+    if (!process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
       return res.status(500).json({
-        error: "Missing BLOB_READ_WRITE_TOKEN environment variable",
+        error:
+          "Missing NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET environment variable",
       });
     }
 
-    console.log("🔵 Testing Vercel Blob Upload");
+    console.log("🔵 Testing Firebase Storage Upload");
 
     if (req.method === "GET") {
       // Just test the configuration without uploading
       return res.status(200).json({
         success: true,
-        message: "Vercel Blob configured correctly",
-        blobToken: process.env.BLOB_READ_WRITE_TOKEN ? "Present" : "Missing",
+        message: "Firebase Storage configured correctly",
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+          ? "Present"
+          : "Missing",
       });
     }
 
@@ -60,21 +64,33 @@ export default async function handler(req, res) {
       path: imageFile.filepath,
     });
 
-    console.log("🔵 Uploading to Vercel Blob...");
+    console.log("🔵 Uploading to Firebase Storage...");
 
     try {
-      const stream = createReadStream(imageFile.filepath);
-      const blob = await put(`test/${imageFile.originalFilename}`, stream, {
-        access: "public",
+      // Read the file content into a buffer
+      const fileBuffer = readFileSync(imageFile.filepath);
+
+      // Create a storage reference with the file name
+      const storageRef = ref(storage, `test/${imageFile.originalFilename}`);
+
+      // Upload the file to Firebase Storage
+      const snapshot = await uploadBytes(storageRef, fileBuffer, {
         contentType: imageFile.mimetype,
       });
 
-      console.log("✅ Upload successful:", blob);
+      // Get the download URL
+      const url = await getDownloadURL(snapshot.ref);
+
+      console.log("✅ Upload successful:", {
+        url,
+        path: `test/${imageFile.originalFilename}`,
+      });
 
       return res.status(200).json({
         success: true,
         message: "Test upload successful",
-        url: blob.url,
+        url: url,
+        path: `test/${imageFile.originalFilename}`,
       });
     } catch (uploadError) {
       console.error("❌ Upload error:", uploadError);

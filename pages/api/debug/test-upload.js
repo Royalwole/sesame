@@ -1,7 +1,8 @@
 import { IncomingForm } from "formidable";
-import { put } from "@vercel/blob";
 import fs from "fs";
 import path from "path";
+import { storage } from "../../../lib/firebase-config";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // Configure API route to handle file uploads
 export const config = {
@@ -50,22 +51,26 @@ export default async function handler(req, res) {
         // Read file
         const fileBuffer = fs.readFileSync(file.filepath);
 
-        // Upload to blob storage
-        const blob = await put(
-          `test/test-${Date.now()}.${path.extname(
-            file.originalFilename || ".jpg"
-          )}`,
-          fileBuffer,
-          {
-            access: "public",
-          }
-        );
+        // Generate a unique filename for Firebase Storage
+        const filename = `test/test-${Date.now()}${path.extname(file.originalFilename || ".jpg")}`;
+
+        // Create a storage reference
+        const storageRef = ref(storage, filename);
+
+        // Upload to Firebase Storage
+        const snapshot = await uploadBytes(storageRef, fileBuffer, {
+          contentType: file.mimetype,
+        });
+
+        // Get download URL
+        const url = await getDownloadURL(snapshot.ref);
 
         uploadResults.push({
           success: true,
           originalName: file.originalFilename,
           size: file.size,
-          url: blob.url,
+          url: url,
+          path: filename,
           type: file.mimetype,
           uploadTime: Date.now() - startTime,
         });
