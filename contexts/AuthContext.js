@@ -5,23 +5,31 @@ import {
   useEffect,
   useCallback,
 } from "react";
-import { useUser, useClerk } from "@clerk/nextjs";
+import { useUser, useClerk, useAuth as useClerkAuth } from "@clerk/nextjs";
 import { useDatabaseConnection } from "./DatabaseContext";
 import { useRouter } from "next/router";
+import {
+  ROLES,
+  isAdmin as checkIsAdmin,
+  isApprovedAgent as checkIsApprovedAgent,
+  isPendingAgent as checkIsPendingAgent,
+  isAnyAgent as checkIsAnyAgent,
+} from "../lib/role-management";
 
 // Create context
 const AuthContext = createContext();
 
-// Cache configuration with improved TTL
+// Cache configuration
 const USER_CACHE_CONFIG = {
   storageKey: "td_user_cache",
-  ttl: 300000, // 5 minutes (increased from 1 minute)
+  ttl: 600000, // 10 minutes (increased from 5 minutes for better UX)
 };
 
 // Auth provider component
 export function AuthProvider({ children }) {
   const router = useRouter();
   const { user, isSignedIn, isLoaded } = useUser();
+  const { userId } = useClerkAuth();
   const { signOut } = useClerk();
   const [dbUser, setDbUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -54,6 +62,8 @@ export function AuthProvider({ children }) {
       }
     } catch (e) {
       console.error("Error parsing cached user data:", e);
+      // If there's an error with the cache, clear it
+      localStorage.removeItem(USER_CACHE_CONFIG.storageKey);
     }
 
     return null;
@@ -82,12 +92,15 @@ export function AuthProvider({ children }) {
   const createFallbackUser = useCallback(() => {
     if (!user) return null;
 
+    // Check for role in Clerk metadata first
+    const role = user.publicMetadata?.role || ROLES.USER;
+
     return {
       clerkId: user.id,
       firstName: user.firstName || "",
       lastName: user.lastName || "",
       email: user.primaryEmailAddress?.emailAddress || "",
-      role: "user", // Default role
+      role: role,
       isFallback: true, // Flag to indicate this isn't from DB
     };
   }, [user]);
@@ -109,10 +122,7 @@ export function AuthProvider({ children }) {
 
         // Redirect if needed
         if (redirectToSignIn) {
-          const currentPath = router.asPath;
-          router.push(
-            `/auth/sign-in?redirect_url=${encodeURIComponent(currentPath)}`
-          );
+          router.push(`/auth/sign-in`);
         }
       } catch (e) {
         console.error("Error during sign out:", e);
@@ -147,92 +157,59 @@ export function AuthProvider({ children }) {
       setIsLoading(true);
       setError(null);
 
-      const fetchWithTimeout = async (attempt) => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch("/api/users/sync", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          signal: AbortSignal.timeout(8000), // Modern timeout approach
+        });
 
-        try {
-          const response = await fetch("/api/users/sync", {
-            method: "GET",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            signal: controller.signal,
-          });
-
-          if (!response.ok) {
-            throw new Error(`${response.status}: ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          if (!data?.success || !data?.user) {
-            throw new Error(data?.error || "Invalid response");
-          }
-
-          return data.user;
-        } catch (error) {
-          if (error.name === "AbortError") {
-            throw new Error("Request timeout");
-          }
-          throw error;
-        } finally {
-          clearTimeout(timeoutId);
+        if (!response.ok) {
+          throw new Error(`${response.status}: ${response.statusText}`);
         }
-      };
 
-      let retryCount = 0;
-      const maxRetries = 3;
-      const initialDelay = 1000;
-      const maxDelay = 5000;
-
-      while (retryCount < maxRetries) {
-        try {
-          const userData = await fetchWithTimeout(retryCount);
-          setDbUser(userData);
-          setLastSynced(new Date());
-          updateCachedUser(userData);
-          setSyncAttempts(0);
-          setError(null);
-          setIsLoading(false);
-          return;
-        } catch (err) {
-          console.error(`Sync attempt ${retryCount + 1} failed:`, err.message);
-
-          if (retryCount < maxRetries - 1) {
-            const delay = Math.min(
-              initialDelay * Math.pow(2, retryCount),
-              maxDelay
-            );
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            retryCount++;
-            continue;
-          }
-
-          if (err.message === "Request timeout") {
-            setError("Connection timed out. Please try again.");
-          } else if (err.message.includes("401")) {
-            setError("Authentication error. Please sign in again.");
-            if (syncAttempts >= 2) {
-              console.warn("Multiple auth failures, signing out");
-              setTimeout(() => handleSignOut(true), 500);
-              return;
-            }
-          } else {
-            setError("Could not sync user data. Please try again later.");
-          }
-
-          if (user) {
-            const fallbackUser = createFallbackUser();
-            setDbUser(fallbackUser);
-            updateCachedUser(fallbackUser);
-          }
-
-          setSyncAttempts((prev) => prev + 1);
-          break;
+        const data = await response.json();
+        if (!data?.success || !data?.user) {
+          throw new Error(data?.error || "Invalid response");
         }
+
+        // Success path - update user data and cache it
+        const userData = data.user;
+        setDbUser(userData);
+        setLastSynced(new Date());
+        updateCachedUser(userData);
+        setSyncAttempts(0);
+        setError(null);
+      } catch (err) {
+        console.error(`User sync failed:`, err.message);
+
+        // Handle common error cases
+        if (err.name === "TimeoutError" || err.name === "AbortError") {
+          setError("Connection timed out. Please try again.");
+        } else if (err.message.includes("401")) {
+          setError("Authentication error. Please sign in again.");
+          if (syncAttempts >= 2) {
+            console.warn("Multiple auth failures, signing out");
+            setTimeout(() => handleSignOut(true), 500);
+            return;
+          }
+        } else {
+          setError("Could not sync user data. Please try again later.");
+        }
+
+        // Use fallback user data from Clerk if possible
+        if (user) {
+          const fallbackUser = createFallbackUser();
+          setDbUser(fallbackUser);
+          updateCachedUser(fallbackUser);
+        }
+
+        setSyncAttempts((prev) => prev + 1);
+      } finally {
+        setIsLoading(false);
+        setLastSynced(new Date());
       }
-
-      setIsLoading(false);
-      setLastSynced(new Date());
     },
     [
       isSignedIn,
@@ -254,12 +231,12 @@ export function AuthProvider({ children }) {
     }
   }, [isSignedIn, isLoaded, isConnected, syncUserData]);
 
-  // Derived auth state
+  // Derived auth state using the role management utility functions
   const isAuthenticated = !!isSignedIn;
-  const isAdmin = dbUser?.role === "admin";
-  const isAgent = ["agent", "agent_pending"].includes(dbUser?.role);
-  const isApprovedAgent = dbUser?.role === "agent" && dbUser?.approved === true;
-  const isPendingAgent = dbUser?.role === "agent_pending";
+  const isAdmin = checkIsAdmin(dbUser);
+  const isAgent = checkIsAnyAgent(dbUser);
+  const isApprovedAgent = checkIsApprovedAgent(dbUser);
+  const isPendingAgent = checkIsPendingAgent(dbUser);
   const hasError = !!error;
 
   // Provide all auth values

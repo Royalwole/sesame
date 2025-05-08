@@ -4,8 +4,8 @@ export default function TermsPage() {
   return (
     <>
       <Head>
-        <title>Terms of Service | TopDial</title>
-        <meta name="description" content="TopDial Terms of Service" />
+        <title>Terms of Service | Topdial.ng</title>
+        <meta name="description" content="Topdial.ng Terms of Service" />
       </Head>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6">Terms of Service</h1>
@@ -14,8 +14,8 @@ export default function TermsPage() {
             1. Acceptance of Terms
           </h2>
           <p className="mb-4">
-            By accessing and using TopDial, you accept and agree to be bound by
-            the terms and provision of this agreement.
+            By accessing and using Topdial.ng, you accept and agree to be bound
+            by the terms and provision of this agreement.
           </p>
 
           <h2 className="text-xl font-semibold mt-6 mb-4">2. Use License</h2>
@@ -35,8 +35,8 @@ export default function TermsPage() {
             4. Service Changes
           </h2>
           <p className="mb-4">
-            TopDial reserves the right to modify or discontinue, temporarily or
-            permanently, the service with or without notice.
+            Topdial.ng reserves the right to modify or discontinue, temporarily
+            or permanently, the service with or without notice.
           </p>
 
           <h2 className="text-xl font-semibold mt-6 mb-4">5. Contact</h2>

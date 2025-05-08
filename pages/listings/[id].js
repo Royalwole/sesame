@@ -18,6 +18,7 @@ import ErrorMessage from "../../components/ui/ErrorMessage";
 import { formatDate } from "../../lib/date-utils";
 import toast from "react-hot-toast";
 import ListingDetail from "../../components/listings/ListingDetail";
+import { getListingById } from "../../lib/listing-api";
 
 const ListingMap = dynamic(
   () => import("../../components/listings/ListingMap"),
@@ -48,119 +49,75 @@ export default function ListingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [diagnosticInfo, setDiagnosticInfo] = useState(null);
 
   useEffect(() => {
+    // Don't fetch until we have an ID from the router
     if (!id) return;
+
+    let isMounted = true; // Track if component is still mounted
 
     async function fetchListing() {
       setLoading(true);
       setError(null);
 
       try {
-        // Log the listing ID being fetched
         console.log(`Fetching listing data for ID: ${id}`);
 
-        // Validate the listing ID format (MongoDB ObjectID is 24-character hex string)
-        const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(id);
-        if (!isValidObjectId) {
-          console.error(`Invalid listing ID format: ${id}`);
-          setError(
-            "Invalid listing ID format. Please check the URL and try again."
-          );
-          setLoading(false);
-          return;
-        }
+        // Use our improved getListingById utility
+        const result = await getListingById(id);
 
-        const MAX_RETRIES = 2;
-        let retries = 0;
-        let success = false;
+        // Only update state if component is still mounted
+        if (!isMounted) return;
 
-        while (!success && retries <= MAX_RETRIES) {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000);
+        if (result.success && result.listing) {
+          console.log("Listing fetched successfully:", result.listing.title);
+          setListing(result.listing);
 
-          try {
-            // Add request timestamp for debugging
-            const requestStartTime = new Date().getTime();
-            console.log(`API request started at: ${new Date().toISOString()}`);
+          // Store diagnostic info for debugging
+          setDiagnosticInfo({
+            attempts: result.diagnostics?.attempts || 1,
+            duration: result.diagnostics?.duration || 0,
+            strategy: result.diagnostics?.strategy || "unknown",
+            idMatch: result.idMatch,
+          });
 
-            const response = await fetch(`/api/listings/${id}`, {
-              headers: {
-                "Cache-Control": "no-cache",
-              },
-              signal: controller.signal,
+          // Preload images if available
+          if (result.listing.images && result.listing.images.length > 0) {
+            result.listing.images.forEach((image) => {
+              if (image && image.url) {
+                const img = new Image();
+                img.src = image.url;
+              }
             });
-
-            clearTimeout(timeoutId);
-
-            // Log response time
-            const requestEndTime = new Date().getTime();
-            console.log(
-              `API response received after ${requestEndTime - requestStartTime}ms`
-            );
-
-            if (!response.ok) {
-              if (response.status === 404) {
-                throw new Error(
-                  "Listing not found. It may have been removed or the ID is incorrect."
-                );
-              } else {
-                throw new Error(
-                  `Server error (${response.status}): ${response.statusText}`
-                );
-              }
-            }
-
-            const data = await response.json();
-
-            if (data.success && data.listing) {
-              console.log("Fetched listing data:", data.listing);
-              setListing(data.listing);
-              success = true;
-            } else {
-              throw new Error(data.message || "Failed to load listing data");
-            }
-
-            break;
-          } catch (err) {
-            if (
-              err.name === "AbortError" ||
-              (err.message && !err.message.includes("not found"))
-            ) {
-              retries++;
-              if (retries <= MAX_RETRIES) {
-                console.log(`Retry attempt ${retries} for listing ${id}`);
-              } else {
-                throw err;
-              }
-            } else {
-              throw err;
-            }
           }
+        } else {
+          throw new Error(result.error || "Could not retrieve listing data");
         }
       } catch (err) {
-        console.error("Error fetching listing:", err);
+        if (!isMounted) return;
 
-        if (err.name === "AbortError") {
-          setError("Request timed out. Please try again.");
-        } else if (err.message && err.message.includes("not found")) {
-          setError(
-            `Listing not found. It may have been removed or the URL is incorrect.`
-          );
-          console.error(
-            `Listing not found details - ID: ${id}, Format valid: ${/^[0-9a-fA-F]{24}$/.test(
-              id
-            )}`
-          );
-        } else {
-          setError(err.message || "Failed to load listing");
-        }
+        console.error("Error fetching listing:", err);
+        setError(err.message || "Failed to load listing");
+
+        // Record detailed diagnostics for errors
+        setDiagnosticInfo({
+          error: err.message,
+          timestamp: new Date().toISOString(),
+        });
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
     fetchListing();
+
+    // Cleanup function to handle unmounting
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
   const handleContactAgent = () => {
@@ -174,11 +131,26 @@ export default function ListingDetailPage() {
     );
   };
 
+  // Handle manual retry
+  const handleRetry = () => {
+    if (!id) return;
+    setLoading(true);
+
+    // Small delay before retrying to ensure any previous requests are completed
+    setTimeout(() => {
+      // Force router refresh which will trigger the useEffect again
+      router.replace(router.asPath);
+    }, 500);
+  };
+
   if (loading) {
     return (
       <Layout>
-        <div className="container mx-auto px-4 py-8 flex justify-center">
-          <LoadingSpinner size="large" />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex flex-col items-center justify-center">
+            <LoadingSpinner size="large" />
+            <p className="mt-4 text-gray-600">Loading property details...</p>
+          </div>
         </div>
       </Layout>
     );
@@ -191,8 +163,11 @@ export default function ListingDetailPage() {
           <ErrorMessage
             title="Couldn't load this listing"
             message={error}
-            actionText="Go back to listings"
-            actionHref="/listings"
+            actionText="Try Again"
+            actionHref="#"
+            onAction={handleRetry}
+            secondaryActionText="Browse Properties"
+            secondaryActionHref="/listings"
           />
         </div>
       </Layout>
@@ -228,6 +203,18 @@ export default function ListingDetailPage() {
       </Head>
 
       <div className="container mx-auto px-4 py-8">
+        {/* Show fetch diagnostic info in development */}
+        {process.env.NODE_ENV === "development" && diagnosticInfo && (
+          <div className="mb-4 p-2 text-xs bg-gray-100 rounded text-gray-500">
+            <details>
+              <summary>Debug Info</summary>
+              <pre className="whitespace-pre-wrap text-xs">
+                {JSON.stringify(diagnosticInfo, null, 2)}
+              </pre>
+            </details>
+          </div>
+        )}
+
         {listing && (
           <ListingDetail
             listing={listing}

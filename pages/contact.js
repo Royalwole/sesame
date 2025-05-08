@@ -66,7 +66,7 @@ export default function ContactPage() {
   return (
     <main
       title="Contact Us"
-      description="Get in touch with TopDial Real Estate. We're here to answer your questions and help you find your perfect property."
+      description="Get in touch with Topdial.ng Real Estate. We're here to answer your questions and help you find your perfect property."
       heroImage="/images/contact-hero.jpg"
       heroTitle="Contact Us"
       heroSubtitle="We're here to help with all your real estate needs. Reach out to our team today."
@@ -316,7 +316,7 @@ export default function ContactPage() {
                       allowFullScreen=""
                       loading="lazy"
                       referrerPolicy="no-referrer-when-downgrade"
-                      title="TopDial Office Location"
+                      title="Topdial.ng Office Location"
                       className="w-full h-full"
                     ></iframe>
                   </div>
@@ -347,20 +347,20 @@ export default function ContactPage() {
                   a: "You can schedule a property viewing directly through the listing page by clicking on the 'Schedule Viewing' button, or by contacting the agent directly via the contact information provided on the listing.",
                 },
                 {
-                  q: "How do I become a verified agent on TopDial?",
+                  q: "How do I become a verified agent on Topdial.ng?",
                   a: "To become a verified agent, create an account, then navigate to the 'Become an Agent' section in your dashboard. Complete the application form with your credentials and license information for review by our team.",
                 },
                 {
-                  q: "What areas does TopDial currently serve?",
-                  a: "TopDial currently operates in major cities across Nigeria, including Lagos, Abuja, Port Harcourt, and surrounding areas. We're continuously expanding to new regions.",
+                  q: "What areas does Topdial.ng currently serve?",
+                  a: "Topdial.ng currently operates in major cities across Nigeria, including Lagos, Abuja, Port Harcourt, and surrounding areas. We're continuously expanding to new regions.",
                 },
                 {
-                  q: "How can I list my property on TopDial?",
+                  q: "How can I list my property on Topdial.ng?",
                   a: "If you're a property owner, you can list through a verified agent. If you're an agent, you can add listings directly through your agent dashboard after verification.",
                 },
                 {
-                  q: "What fees does TopDial charge?",
-                  a: "TopDial is free for property seekers. For agents and property managers, we offer various subscription plans that you can view on our pricing page.",
+                  q: "What fees does Topdial.ng charge?",
+                  a: "Topdial.ng is free for property seekers. For agents and property managers, we offer various subscription plans that you can view on our pricing page.",
                 },
               ].map((item, index) => (
                 <div

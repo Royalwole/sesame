@@ -86,10 +86,10 @@ export default function ContactPage() {
   return (
     <>
       <Head>
-        <title>Contact Us | TopDial</title>
+        <title>Contact Us | Topdial</title>
         <meta
           name="description"
-          content="Get in touch with the TopDial team for inquiries about our real estate platform."
+          content="Get in touch with the Topdial team for inquiries about our real estate platform."
         />
       </Head>
 

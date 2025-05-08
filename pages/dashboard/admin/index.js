@@ -10,6 +10,7 @@ import {
   FiDatabase,
   FiRefreshCw,
   FiAlertCircle,
+  FiUserCheck,
 } from "react-icons/fi";
 import Loader from "../../../components/utils/Loader";
 
@@ -200,6 +201,12 @@ const adminActions = [
     icon: <FiList className="h-5 w-5 text-gray-600" />,
     title: "Manage Listings",
     description: "Review, edit and manage property listings",
+  },
+  {
+    href: "/dashboard/admin/role-management",
+    icon: <FiUserCheck className="h-5 w-5 text-gray-600" />,
+    title: "Role Management",
+    description: "Assign and manage user roles and permissions",
   },
   {
     href: "/dashboard/admin/settings",

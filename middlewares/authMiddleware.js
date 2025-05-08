@@ -1,6 +1,14 @@
 import { getAuth } from "@clerk/nextjs/server";
 import { connectDB, disconnectDB } from "../lib/db";
 import User from "../models/User";
+import {
+  ROLES,
+  isAdmin,
+  isAnyAgent,
+  isApprovedAgent,
+  isPendingAgent,
+  hasAnyRole,
+} from "../lib/role-management";
 
 // Constants for consistent response messages
 const AUTH_MESSAGES = {
@@ -96,11 +104,8 @@ export function requireUser(handler) {
  */
 export function requireAgentAuth(handler) {
   return requireUser(async (req, res) => {
-    // Check if user has agent role
-    const isAgent =
-      req.user.role === "agent" || req.user.role === "agent_pending";
-
-    if (!isAgent) {
+    // Check if user has agent role using the centralized role management
+    if (!isAnyAgent(req.user)) {
       return res.status(403).json({
         success: false,
         error: AUTH_MESSAGES.FORBIDDEN,
@@ -109,8 +114,27 @@ export function requireAgentAuth(handler) {
     }
 
     // Add agent-specific properties
-    req.isApprovedAgent =
-      req.user.role === "agent" && req.user.approved === true;
+    req.isApprovedAgent = isApprovedAgent(req.user);
+    req.isPendingAgent = isPendingAgent(req.user);
+
+    // Continue to handler
+    return handler(req, res);
+  });
+}
+
+/**
+ * Middleware to check if user is an approved agent only (not pending)
+ */
+export function requireApprovedAgentAuth(handler) {
+  return requireUser(async (req, res) => {
+    // Check if user is an approved agent
+    if (!isApprovedAgent(req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: AUTH_MESSAGES.FORBIDDEN,
+        message: "Approved agent access required",
+      });
+    }
 
     // Continue to handler
     return handler(req, res);
@@ -122,8 +146,8 @@ export function requireAgentAuth(handler) {
  */
 export function requireAdmin(handler) {
   return requireUser(async (req, res) => {
-    // Check if user has admin role
-    if (req.user.role !== "admin") {
+    // Check if user has admin role using the centralized role management
+    if (!isAdmin(req.user)) {
       return res.status(403).json({
         success: false,
         error: AUTH_MESSAGES.FORBIDDEN,
@@ -144,8 +168,8 @@ export function requireRole(roles) {
     // Convert to array if single role provided
     const requiredRoles = Array.isArray(roles) ? roles : [roles];
 
-    // Check if user has any of the required roles
-    if (!requiredRoles.includes(req.user.role)) {
+    // Check if user has any of the required roles using the centralized role management
+    if (!hasAnyRole(req.user, requiredRoles)) {
       return res.status(403).json({
         success: false,
         error: AUTH_MESSAGES.FORBIDDEN,

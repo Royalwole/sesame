@@ -41,14 +41,14 @@ function FAQItem({ question, answer }) {
 export default function FAQ() {
   const faqs = [
     {
-      question: "How do I list my property on TopDial?",
+      question: "How do I list my property on Topdial.ng?",
       answer:
         "To list your property, sign up for an account and navigate to the dashboard. Click on 'Add New Listing' and fill out the required information about your property, including photos, price, and description. Once submitted, our team will review your listing before it goes live.",
     },
     {
-      question: "What types of properties can I find on TopDial?",
+      question: "What types of properties can I find on Topdial.ng?",
       answer:
-        "TopDial features a wide range of properties including residential homes, apartments, commercial spaces, and land. You can find both properties for sale and for rent across various locations in Nigeria.",
+        "Topdial.ng features a wide range of properties including residential homes, apartments, commercial spaces, and land. You can find both properties for sale and for rent across various locations in Nigeria.",
     },
     {
       question: "How do I schedule a property viewing?",
@@ -56,7 +56,7 @@ export default function FAQ() {
         "When you find a property you're interested in, click the 'Schedule Viewing' button on the listing page. You can choose your preferred date and time, and our team will coordinate with the property owner or agent to confirm your appointment.",
     },
     {
-      question: "Is my information secure on TopDial?",
+      question: "Is my information secure on Topdial.ng?",
       answer:
         "Yes, we take data security seriously. All personal information is encrypted and stored securely. We never share your information with third parties without your consent. You can review our Privacy Policy for more details.",
     },
@@ -80,10 +80,10 @@ export default function FAQ() {
   return (
     <>
       <Head>
-        <title>Frequently Asked Questions | TopDial</title>
+        <title>Frequently Asked Questions | Topdial.ng</title>
         <meta
           name="description"
-          content="Find answers to common questions about using TopDial, Nigeria's premier real estate platform."
+          content="Find answers to common questions about using Topdial.ng, Nigeria's premier real estate platform."
         />
       </Head>
       <div className="max-w-4xl mx-auto px-4 py-12">

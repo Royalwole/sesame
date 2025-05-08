@@ -59,6 +59,11 @@ const nextConfig = {
         protocol: "https",
         hostname: "topdial-cdn.azureedge.net",
       },
+      // Add Firebase storage URL for image optimization
+      {
+        protocol: "https",
+        hostname: "firebasestorage.googleapis.com",
+      },
     ],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
@@ -94,8 +99,9 @@ const nextConfig = {
     ];
   },
 
-  // Keep webpack configuration
-  webpack: (config, { isServer }) => {
+  // Enhanced webpack configuration
+  webpack: (config, { isServer, dev }) => {
+    // Add polyfills and fallbacks
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -114,16 +120,58 @@ const nextConfig = {
       };
     }
 
-    if (
-      config.module.rules.find((rule) => rule.test?.toString().includes("svg"))
-    ) {
-      return config;
+    // Fix for Firebase imports
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        'firebase/app': 'firebase/app/dist/esm/index.esm.js',
+        'firebase/storage': 'firebase/storage/dist/esm/index.esm.js',
+      };
+    }
+
+    // Handle SVG files with SVGR
+    const fileLoaderRule = config.module.rules.find((rule) => 
+      rule.test?.test?.('.svg')
+    );
+    
+    if (fileLoaderRule) {
+      fileLoaderRule.exclude = /\.svg$/;
     }
 
     config.module.rules.push({
       test: /\.svg$/,
       use: ["@svgr/webpack"],
     });
+
+    // Improved handling of large module imports
+    config.optimization = {
+      ...config.optimization,
+      moduleIds: 'deterministic',
+      splitChunks: {
+        cacheGroups: {
+          vendor: {
+            name: "vendor",
+            test: /[\\/]node_modules[\\/]/,
+            chunks: "all",
+            priority: 10,
+          },
+          firebase: {
+            name: "firebase-vendor",
+            test: /[\\/]node_modules[\\/](firebase|@firebase)/,
+            chunks: "all",
+            priority: 20,
+          },
+          common: {
+            name: "common",
+            minChunks: 2,
+            chunks: "async",
+            priority: 5,
+            reuseExistingChunk: true,
+          },
+        },
+      },
+    };
+
     return config;
   },
 

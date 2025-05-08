@@ -4,8 +4,8 @@ export default function PrivacyPage() {
   return (
     <>
       <Head>
-        <title>Privacy Policy | TopDial</title>
-        <meta name="description" content="TopDial Privacy Policy" />
+        <title>Privacy Policy | Topdial</title>
+        <meta name="description" content="Topdial.ng Privacy Policy" />
       </Head>
       <div className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold mb-6">Privacy Policy</h1>

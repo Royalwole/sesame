@@ -1,150 +1,125 @@
-import React, { memo, useEffect, useRef } from "react";
-import { useRouter } from "next/router";
-import { FiAlertCircle, FiRefreshCw } from "react-icons/fi";
-import { useListings } from "../../contexts/ListingsContext";
-import ListingCard from "./ListingCard";
-import ErrorBoundary from "../ErrorBoundary";
+import React, { useState, useEffect, useMemo } from "react";
+import PropTypes from "prop-types";
+import ListingCard from "./ListingCard.jsx";
+import { FiAlertCircle, FiLoader } from "react-icons/fi";
 
-// Memoize ListingCard to prevent unnecessary re-renders
-const MemoizedListingCard = memo(ListingCard);
+/**
+ * ListingsGrid - Responsive grid for displaying property listings
+ * with enhanced error handling and empty states
+ */
+const ListingsGrid = ({
+  listings = [],
+  loading = false,
+  error = null,
+  onListingClick,
+  emptyMessage = "No properties found matching your criteria.",
+  gridClassName = "",
+  loadingMessage = "Loading properties...",
+  preloadImages = true,
+}) => {
+  const [renderedListings, setRenderedListings] = useState([]);
+  const [hasError, setHasError] = useState(false);
 
-// Wrap individual listing cards in error boundary to prevent cascade failures
-const ListingCardWithErrorBoundary = ({ listing }) => (
-  <ErrorBoundary
-    fallback={
-      <div className="bg-red-50 rounded-lg p-4 text-red-700">
-        Error displaying this listing
-      </div>
-    }
-  >
-    <MemoizedListingCard listing={listing} />
-  </ErrorBoundary>
-);
-
-export default memo(function ListingsGrid({
-  listings: propListings = [],
-  loading: propLoading,
-  error: propError,
-  onRefetch,
-}) {
-  const router = useRouter();
-  const mounted = useRef(true);
-
-  // Get listings from context if available
-  const {
-    listings: contextListings,
-    loading: contextLoading,
-    error: contextError,
-    refreshListings,
-  } = useListings?.() || {};
-
-  // Determine if using context based on presence of refreshListings
-  const hasContext = !!refreshListings;
-
-  // Use context values if available, otherwise fall back to props
-  const listings = hasContext ? contextListings : propListings;
-  const loading = hasContext ? contextLoading : propLoading;
-  const error = hasContext ? contextError : propError;
-
-  // Safe array handling
-  const safeListings = Array.isArray(listings) ? listings : [];
-
-  // Cleanup on unmount
+  // Sanitize and validate listings
   useEffect(() => {
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+    // Skip processing during loading state
+    if (loading) return;
 
-  // Handle retry action
-  const handleRetry = () => {
-    if (hasContext && refreshListings) {
-      refreshListings();
-    } else if (onRefetch) {
-      onRefetch();
-    } else {
-      router.reload();
+    try {
+      // Filter out invalid listings and sanitize data
+      const validListings = Array.isArray(listings)
+        ? listings.filter(
+            (listing) => listing && typeof listing === "object" && listing._id
+          )
+        : [];
+
+      if (validListings.length !== listings?.length) {
+        console.warn(
+          `Filtered out ${(listings?.length || 0) - validListings.length} invalid listings`
+        );
+      }
+
+      setRenderedListings(validListings);
+      setHasError(false);
+    } catch (err) {
+      console.error("Error processing listings data:", err);
+      setRenderedListings([]);
+      setHasError(true);
     }
-  };
+  }, [listings, loading]);
 
-  // Fix loading state with better skeleton UI
+  // Optimize preloading by only preloading first 6 listings' images
+  const preloadConfig = useMemo(() => {
+    if (!preloadImages || !Array.isArray(listings)) return {};
+
+    // Create a map where only the first 6 listings get image preloading
+    return listings.reduce((acc, listing, index) => {
+      if (listing && listing._id) {
+        acc[listing._id] = index < 6;
+      }
+      return acc;
+    }, {});
+  }, [listings, preloadImages]);
+
+  // Determine what to render based on loading/error/empty states
   if (loading) {
     return (
-      <div
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        role="status"
-        aria-busy="true"
-      >
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="bg-white rounded-lg shadow-sm overflow-hidden animate-pulse"
-            aria-hidden="true"
-          >
-            <div className="h-48 bg-gray-200" />
-            <div className="p-4">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-4" />
-              <div className="h-4 bg-gray-200 rounded w-1/2" />
-            </div>
-          </div>
-        ))}
-        <div className="sr-only">Loading listings...</div>
+      <div className="flex flex-col items-center justify-center my-12 py-8 text-gray-500">
+        <FiLoader size={32} className="mb-4 animate-spin text-blue-500" />
+        <p>{loadingMessage}</p>
       </div>
     );
   }
 
-  // Show error state
-  if (error) {
+  if (hasError || error) {
     return (
-      <div
-        role="alert"
-        className="bg-red-50 border border-red-100 rounded-lg p-4"
-      >
-        <div className="flex items-center text-red-600 mb-2">
-          <FiAlertCircle className="mr-2" aria-hidden="true" />
-          <h3 className="font-medium">Error loading listings</h3>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 my-4 text-red-700 flex items-center">
+        <FiAlertCircle className="mr-2 flex-shrink-0" size={20} />
+        <div>
+          <p className="font-medium">Unable to load listings</p>
+          <p className="text-sm mt-1">
+            {error?.message ||
+              "There was a problem fetching the listings. Please try again."}
+          </p>
         </div>
-        <p className="text-red-600">{error}</p>
-        <button
-          onClick={handleRetry}
-          className="mt-3 text-red-700 hover:text-red-800"
-        >
-          <FiRefreshCw className="inline mr-2" /> Retry
-        </button>
       </div>
     );
   }
 
-  // Show empty state
-  if (!safeListings.length) {
+  if (!renderedListings.length) {
     return (
-      <div
-        role="status"
-        className="text-center py-12 bg-white rounded-lg shadow-sm"
-      >
-        <p className="text-gray-500 mb-4">No listings found</p>
-        <button
-          onClick={handleRetry}
-          className="text-blue-600 hover:text-blue-700"
-        >
-          Refresh listings
-        </button>
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 my-4 text-center text-gray-600">
+        {emptyMessage}
       </div>
     );
   }
 
-  // Display listings grid
   return (
     <div
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-      role="feed"
-      aria-label="Property listings"
+      className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 ${gridClassName}`}
+      data-testid="listings-grid"
     >
-      {safeListings.map((listing) => (
-        <article key={listing._id}>
-          <ListingCardWithErrorBoundary listing={listing} />
-        </article>
+      {renderedListings.map((listing) => (
+        <ListingCard
+          key={`listing-${listing._id}`}
+          listing={listing}
+          onClick={onListingClick}
+          preloadImages={preloadConfig[listing._id] || false}
+        />
       ))}
     </div>
   );
-});
+};
+
+ListingsGrid.propTypes = {
+  listings: PropTypes.arrayOf(PropTypes.object),
+  loading: PropTypes.bool,
+  error: PropTypes.object,
+  onListingClick: PropTypes.func,
+  emptyMessage: PropTypes.node,
+  gridClassName: PropTypes.string,
+  loadingMessage: PropTypes.node,
+  preloadImages: PropTypes.bool,
+};
+
+export default ListingsGrid;

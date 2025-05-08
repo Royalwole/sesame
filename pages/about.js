@@ -10,10 +10,10 @@ export default function AboutPage() {
   return (
     <>
       <Head>
-        <title>About Us | TopDial</title>
+        <title>About Us | Topdial</title>
         <meta
           name="description"
-          content="Learn about TopDial Real Estate, our mission, our team, and how we're transforming the real estate market."
+          content="Learn about Topdial.ng, our mission, our team, and how we're transforming the real estate market."
         />
       </Head>
 
@@ -30,7 +30,7 @@ export default function AboutPage() {
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="text-center text-white px-4">
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              About TopDial
+              About Topdial.ng
             </h1>
             <p className="text-xl md:text-2xl">
               Transforming how people find their perfect home
@@ -53,7 +53,7 @@ export default function AboutPage() {
             <div className="max-w-3xl mx-auto text-center mb-12">
               <h2 className="text-3xl font-bold mb-6">Our Mission</h2>
               <p className="text-lg text-gray-700 leading-relaxed">
-                At TopDial, we're committed to transforming the real estate
+                At Topdial, we're committed to transforming the real estate
                 experience. Our mission is to create a transparent, efficient,
                 and trustworthy platform that connects property seekers with
                 verified listings and reputable agents. We leverage technology
@@ -108,7 +108,7 @@ export default function AboutPage() {
                 <div className="md:w-1/2 mb-10 md:mb-0 md:pr-10">
                   <h2 className="text-3xl font-bold mb-6">Our Story</h2>
                   <p className="text-gray-700 mb-6">
-                    TopDial was founded in 2020 by a team of real estate
+                    Topdial was founded in 2020 by a team of real estate
                     professionals and technology experts who recognized the need
                     for a more transparent and efficient property marketplace.
                   </p>
@@ -126,7 +126,7 @@ export default function AboutPage() {
                       <div className="ml-3">
                         <h4 className="text-lg font-medium">2020</h4>
                         <p className="text-gray-600">
-                          TopDial founded with a mission to transform real
+                          Topdial founded with a mission to transform real
                           estate
                         </p>
                       </div>
@@ -174,7 +174,7 @@ export default function AboutPage() {
                   <div className="relative h-80 md:h-96 overflow-hidden rounded-lg shadow-lg bg-gray-200">
                     <Image
                       src="/images/team-photo.jpg"
-                      alt="TopDial Team"
+                      alt="Topdial.ng Team"
                       className="object-cover"
                       fill
                       onError={(e) => {
@@ -266,7 +266,7 @@ export default function AboutPage() {
             </h2>
             <p className="text-xl mb-8 max-w-2xl mx-auto">
               Join thousands of satisfied users who have found their dream homes
-              through TopDial.
+              through Topdial.ng.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <a

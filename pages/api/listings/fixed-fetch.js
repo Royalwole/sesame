@@ -3,67 +3,99 @@ import Listing from "../../../models/Listing";
 import mongoose from "mongoose";
 
 export default async function handler(req, res) {
-  // Get the listing ID from query parameters
-  const { id, forceDirect } = req.query;
+  const { id, forceDirect = false } = req.query;
   let dbConnection = false;
+  const requestId = `fetch-${Math.random().toString(36).substring(2, 7)}`;
+  const startTime = Date.now();
+  const recoveryLog = [];
+
+  console.log(
+    `[FixedFetch:${requestId}] Starting enhanced fetch for ID: ${id}`
+  );
 
   try {
-    // Validate ID
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing ID parameter",
-      });
-    }
-
-    console.log(`[fixed-fetch] Recovery attempt for listing ${id}`);
-
     // Connect to database
     await connectDB();
     dbConnection = true;
 
-    // Try multiple approaches to find the listing
-    let listing = null;
-    const recoveryLog = [];
+    // Only GET method is supported
+    if (req.method !== "GET") {
+      return res.status(405).json({
+        success: false,
+        message: "Method not allowed",
+        requestId,
+      });
+    }
 
-    // Try multiple ID formats for maximum compatibility
+    // Validate ID format
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Listing ID is required",
+        requestId,
+      });
+    }
+
+    // Try standard ObjectId approach first
+    let listing = null;
+
     if (mongoose.Types.ObjectId.isValid(id)) {
-      // Try 1: Direct ObjectId lookup
       try {
         const objectId = new mongoose.Types.ObjectId(id);
-        recoveryLog.push({ method: "objectId", id: objectId.toString() });
+        recoveryLog.push({
+          method: "standardFetch",
+          objectId: objectId.toString(),
+        });
 
-        listing = await Listing.findOne({ _id: objectId })
+        // Use findById for exact match
+        listing = await Listing.findById(objectId)
           .populate("createdBy", "firstName lastName email phone")
           .lean();
 
         if (listing) {
-          recoveryLog.push({ success: true, method: "objectId" });
+          recoveryLog.push({
+            success: true,
+            method: "standardFetch",
+            foundId: listing._id.toString(),
+          });
         }
       } catch (err) {
-        recoveryLog.push({ error: err.message, method: "objectId" });
-      }
-
-      // Try 2: String ID lookup as fallback
-      if (!listing) {
-        try {
-          recoveryLog.push({ method: "stringId", id: id.toString() });
-
-          listing = await Listing.findOne({ _id: id.toString() })
-            .populate("createdBy", "firstName lastName email phone")
-            .lean();
-
-          if (listing) {
-            recoveryLog.push({ success: true, method: "stringId" });
-          }
-        } catch (err) {
-          recoveryLog.push({ error: err.message, method: "stringId" });
-        }
+        recoveryLog.push({
+          method: "standardFetch",
+          error: err.message,
+        });
       }
     }
 
-    // Try 3: If direct flag is set, try even more aggressive approaches
-    if (!listing && forceDirect === "true") {
+    // If standard approach didn't work, try direct ObjectId querying
+    if (!listing && (forceDirect || !mongoose.Types.ObjectId.isValid(id))) {
+      try {
+        recoveryLog.push({ method: "directQuery", search: "byStringId" });
+
+        // Try direct string matching
+        listing = await Listing.findOne({
+          $or: [{ _id: id }, { _id: { $regex: id, $options: "i" } }],
+        })
+          .populate("createdBy", "firstName lastName email phone")
+          .lean();
+
+        if (listing) {
+          recoveryLog.push({
+            success: true,
+            method: "directQuery",
+            foundId: listing._id.toString(),
+          });
+        }
+      } catch (err) {
+        recoveryLog.push({
+          method: "directQuery",
+          error: err.message,
+        });
+      }
+    }
+
+    // If still not found, try advanced recovery techniques
+    if (!listing) {
       try {
         // Try searching by ID field or any other unique identifiers
         recoveryLog.push({ method: "advancedRecovery", search: "byId" });
@@ -91,45 +123,96 @@ export default async function handler(req, res) {
           });
         }
       } catch (err) {
-        recoveryLog.push({ error: err.message, method: "advancedRecovery" });
+        recoveryLog.push({
+          method: "advancedRecovery",
+          error: err.message,
+        });
+      }
+
+      // Try fetching by title if provided in query
+      if (!listing && req.query.fallbackTitle) {
+        try {
+          recoveryLog.push({
+            method: "fallbackSearch",
+            search: "byTitle",
+            title: req.query.fallbackTitle,
+          });
+
+          const titleSearch = decodeURIComponent(req.query.fallbackTitle);
+          listing = await Listing.findOne({
+            title: { $regex: titleSearch, $options: "i" },
+          })
+            .populate("createdBy", "firstName lastName email phone")
+            .lean();
+
+          if (listing) {
+            recoveryLog.push({
+              success: true,
+              method: "fallbackSearch",
+              foundId: listing._id.toString(),
+            });
+          }
+        } catch (err) {
+          recoveryLog.push({
+            method: "fallbackSearch",
+            error: err.message,
+          });
+        }
       }
     }
 
-    // If we found a listing with any method
+    // Final result processing
+    const duration = Date.now() - startTime;
+
+    // Set cache control headers
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
+    // If found, return listing with timestamp to avoid caching
     if (listing) {
-      // Standardize listing for response
-      const standardizedListing = {
-        ...listing,
-        _id: listing._id.toString(),
-        createdBy: listing.createdBy
-          ? { ...listing.createdBy, _id: listing.createdBy._id.toString() }
-          : null,
-      };
+      // Ensure IDs are properly stringified
+      const stringifiedListing = JSON.parse(JSON.stringify(listing));
 
       return res.status(200).json({
         success: true,
-        listing: standardizedListing,
-        recoveryInfo: {
-          method: "direct-db-query",
-          steps: recoveryLog,
+        listing: stringifiedListing,
+        meta: {
+          requestId,
+          timestamp: Date.now(),
+          duration,
         },
+        log: process.env.NODE_ENV === "development" ? recoveryLog : undefined,
       });
     }
 
-    // No listing found with any approach
+    // No listing found after all attempts
     return res.status(404).json({
       success: false,
-      error: "Listing not found",
-      recoveryInfo: { steps: recoveryLog },
-      queriedId: id,
+      message: "Listing not found after multiple recovery attempts",
+      meta: {
+        requestId,
+        timestamp: Date.now(),
+        duration,
+      },
+      log: process.env.NODE_ENV === "development" ? recoveryLog : undefined,
     });
   } catch (error) {
-    console.error("Error in fixed-fetch API:", error);
+    console.error(`[FixedFetch:${requestId}] Error:`, error);
+
     return res.status(500).json({
       success: false,
-      error: "Server error",
-      message: error.message,
-      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      message: "Server error during listing fetch",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : "Internal server error",
+      meta: {
+        requestId,
+        timestamp: Date.now(),
+        duration: Date.now() - startTime,
+      },
+      log: process.env.NODE_ENV === "development" ? recoveryLog : undefined,
     });
   } finally {
     if (dbConnection) {

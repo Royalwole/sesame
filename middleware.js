@@ -22,6 +22,7 @@ const AUTH_CONFIG = {
     "/fonts/", // Font assets
     "/icons/", // Icon assets
     "/clerk", // Clerk related paths
+    "/faq", // FAQ page
   ],
 
   // Sign-in path for redirects
@@ -72,7 +73,7 @@ export default function middleware(request) {
 
     // Use getAuth instead of relying on the middleware param
     const auth = getAuth(request);
-    const userId = auth.userId;
+    const userId = auth?.userId;
 
     // Skip redirects for API routes to prevent redirect loops
     const isApiRoute = pathname.startsWith("/api/");
@@ -84,8 +85,10 @@ export default function middleware(request) {
 
       // Only add redirect for page routes, not for API routes
       if (!pathname.startsWith("/api/")) {
-        // Use just the pathname to avoid encoding issues with full URLs
-        signInUrl.searchParams.set("redirect_url", pathname);
+        // Use just the pathname and any query parameters for the redirect
+        const url = new URL(request.url);
+        const redirectPath = url.pathname + url.search;
+        signInUrl.searchParams.set("redirect_url", redirectPath);
       }
 
       return NextResponse.redirect(signInUrl);
