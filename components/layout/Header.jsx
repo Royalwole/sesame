@@ -20,6 +20,7 @@ import {
   FiHeart,
   FiHome,
   FiSettings,
+  FiSliders,
 } from "react-icons/fi";
 
 export default function Header() {
@@ -30,6 +31,11 @@ export default function Header() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showRangeSearch, setShowRangeSearch] = useState(false);
+  const [priceRange, setPriceRange] = useState({ min: "", max: "" });
+  const [bedroomCount, setBedroomCount] = useState("");
+  const [bathroomCount, setBathroomCount] = useState("");
 
   const mobileMenuRef = useRef(null);
   const accountMenuRef = useRef(null);
@@ -115,6 +121,28 @@ export default function Header() {
     { name: "About", path: "/about", icon: <FiInfo className="mr-3 h-5 w-5" aria-hidden="true" /> },
     { name: "Contact", path: "/contact", icon: <FiPhone className="mr-3 h-5 w-5" aria-hidden="true" /> },
   ];
+
+  // Handle search submission
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+
+    const queryParams = new URLSearchParams();
+
+    if (searchQuery.trim()) {
+      queryParams.set("q", searchQuery.trim());
+    }
+
+    if (showRangeSearch) {
+      if (priceRange.min) queryParams.set("minPrice", priceRange.min);
+      if (priceRange.max) queryParams.set("maxPrice", priceRange.max);
+      if (bedroomCount) queryParams.set("bedrooms", bedroomCount);
+      if (bathroomCount) queryParams.set("bathrooms", bathroomCount);
+    }
+
+    // Redirect to listings page with search parameters
+    router.push(`/listings?${queryParams.toString()}`);
+    setSearchOpen(false);
+  };
 
   return (
     <header
@@ -258,8 +286,18 @@ export default function Header() {
             )}
           </div>
 
-          {/* Mobile menu button */}
-          <div className="flex lg:hidden">
+          {/* Mobile header actions */}
+          <div className="flex items-center space-x-2 lg:hidden">
+            {/* Mobile search button */}
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="p-2 text-slate-600 hover:text-slate-900 rounded-full transition-colors"
+              aria-label="Search"
+            >
+              <FiSearch className="w-5 h-5" />
+            </button>
+
+            {/* Mobile menu button */}
             <button
               id="mobile-menu-button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -386,7 +424,7 @@ export default function Header() {
       {/* Mobile menu overlay */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-white z-40 lg:hidden"
+          className="fixed inset-0 bg-white/60 backdrop-blur-sm z-40 lg:hidden"
           aria-hidden="true"
           onClick={() => setMobileMenuOpen(false)}
         />
@@ -396,14 +434,14 @@ export default function Header() {
       {searchOpen && (
         <>
           <div
-            className="fixed inset-0 bg-black z-50 p-4 flex items-start justify-center pt-[20vh]"
+            className="fixed inset-0 bg-white/60 backdrop-blur-sm z-50 p-4 flex items-start justify-center pt-[10vh]"
             onClick={() => setSearchOpen(false)}
           >
             <div
               className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-4 relative">
+              <form onSubmit={handleSearchSubmit} className="p-4 relative">
                 <div className="flex items-center border-b border-slate-100 pb-4">
                   <FiSearch className="w-5 h-5 text-slate-400 mr-3" />
                   <input
@@ -412,8 +450,19 @@ export default function Header() {
                     placeholder="Search properties, locations..."
                     className="flex-1 bg-transparent border-0 focus:ring-0 text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none"
                     autoFocus
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                   <button
+                    type="button"
+                    onClick={() => setShowRangeSearch(!showRangeSearch)}
+                    className={`p-1.5 mr-2 rounded-full ${showRangeSearch ? "bg-amber-100 text-amber-600" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"}`}
+                    aria-label="Advanced search"
+                  >
+                    <FiSliders className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setSearchOpen(false)}
                     className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                   >
@@ -421,37 +470,112 @@ export default function Header() {
                   </button>
                 </div>
 
-                {/* Quick search links */}
-                <div className="mt-4">
-                  <p className="text-xs text-slate-400 uppercase tracking-wider font-medium mb-2">Popular searches</p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <Link
-                      href="/listings?listingType=sale&location=Lagos"
-                      className="flex items-center px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-700 text-sm"
-                      onClick={() => setSearchOpen(false)}
-                    >
-                      <FiMapPin className="mr-2 h-4 w-4 text-slate-500" />
-                      Lagos properties
-                    </Link>
-                    <Link
-                      href="/listings?listingType=rent"
-                      className="flex items-center px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-700 text-sm"
-                      onClick={() => setSearchOpen(false)}
-                    >
-                      <FiHome className="mr-2 h-4 w-4 text-slate-500" />
-                      Rental homes
-                    </Link>
-                    <Link
-                      href="/listings?category=luxury"
-                      className="flex items-center px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-700 text-sm"
-                      onClick={() => setSearchOpen(false)}
-                    >
-                      <FiHeart className="mr-2 h-4 w-4 text-slate-500" />
-                      Luxury homes
-                    </Link>
+                {/* Range search options */}
+                {showRangeSearch && (
+                  <div className="mt-4 border rounded-lg border-slate-100 p-4 bg-slate-50">
+                    <p className="text-xs text-slate-500 uppercase tracking-wider font-medium mb-3">
+                      Advanced Search Options
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Min Price</label>
+                        <input
+                          type="number"
+                          placeholder="Min"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          value={priceRange.min}
+                          onChange={(e) => setPriceRange({ ...priceRange, min: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Max Price</label>
+                        <input
+                          type="number"
+                          placeholder="Max"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          value={priceRange.max}
+                          onChange={(e) => setPriceRange({ ...priceRange, max: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Bedrooms</label>
+                        <select
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          value={bedroomCount}
+                          onChange={(e) => setBedroomCount(e.target.value)}
+                        >
+                          <option value="">Any</option>
+                          <option value="1">1+</option>
+                          <option value="2">2+</option>
+                          <option value="3">3+</option>
+                          <option value="4">4+</option>
+                          <option value="5">5+</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Bathrooms</label>
+                        <select
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          value={bathroomCount}
+                          onChange={(e) => setBathroomCount(e.target.value)}
+                        >
+                          <option value="">Any</option>
+                          <option value="1">1+</option>
+                          <option value="2">2+</option>
+                          <option value="3">3+</option>
+                          <option value="4">4+</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                {/* Quick search links - only show when range search is hidden */}
+                {!showRangeSearch && (
+                  <div className="mt-4">
+                    <p className="text-xs text-slate-400 uppercase tracking-wider font-medium mb-2">Popular searches</p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      <Link
+                        href="/listings?listingType=sale&location=Lagos"
+                        className="flex items-center px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-700 text-sm"
+                        onClick={() => setSearchOpen(false)}
+                      >
+                        <FiMapPin className="mr-2 h-4 w-4 text-slate-500" />
+                        Lagos properties
+                      </Link>
+                      <Link
+                        href="/listings?listingType=rent"
+                        className="flex items-center px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-700 text-sm"
+                        onClick={() => setSearchOpen(false)}
+                      >
+                        <FiHome className="mr-2 h-4 w-4 text-slate-500" />
+                        Rental homes
+                      </Link>
+                      <Link
+                        href="/listings?category=luxury"
+                        className="flex items-center px-3 py-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-700 text-sm"
+                        onClick={() => setSearchOpen(false)}
+                      >
+                        <FiHeart className="mr-2 h-4 w-4 text-slate-500" />
+                        Luxury homes
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <button
+                    type="submit"
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-lg py-2.5 font-medium transition-colors"
+                  >
+                    Search Properties
+                  </button>
                 </div>
-              </div>
+              </form>
             </div>
           </div>
         </>
