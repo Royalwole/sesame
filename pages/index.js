@@ -6,7 +6,12 @@ import { BsHouseDoor, BsBuilding, BsMap } from "react-icons/bs";
 import { FiSearch } from "react-icons/fi";
 import AuthDebugger from "../components/utils/AuthDebugger";
 
-const inter = Inter({ subsets: ["latin"] });
+// Add fallback to system fonts in case Google Fonts can't be reached
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  fallback: ["system-ui", "Arial", "sans-serif"],
+});
 
 export default function Home() {
   // Restoring original featured property images

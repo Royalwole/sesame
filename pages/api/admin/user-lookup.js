@@ -1,6 +1,6 @@
 import { withApiAuthRequired } from "@clerk/nextjs";
 import User from "../../../models/User";
-import dbConnect from "../../../lib/db";
+import { connectDB } from "../../../lib/db"; // Fix import to use named export
 import { getRole, isAdmin } from "../../../lib/role-management";
 
 /**
@@ -35,7 +35,7 @@ async function handler(req, res) {
       });
     }
 
-    await dbConnect();
+    await connectDB();
 
     // Search for user by email, name, ID, or clerkId
     const user = await User.findOne({

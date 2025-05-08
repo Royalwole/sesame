@@ -1,12 +1,12 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { getAuth } from "@clerk/nextjs/server";
-import { isAdmin, ROLES } from "../../../../lib/role-management";
-import { syncUserRoles } from "../../../../lib/role-sync";
+import { ROLES } from "../../../../lib/role-management";
 import { connectDB } from "../../../../lib/db";
-import User from "../../../../lib/models/User";
+import User from "../../../../models/User";
 
 /**
  * API handler for syncing a user's roles between Clerk and MongoDB
+ *
  *
  * POST /api/users/role/sync
  *

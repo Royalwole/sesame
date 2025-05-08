@@ -1,5 +1,5 @@
 import { withAuth } from "../../../../lib/withAuth";
-import { connectToDatabase } from "../../../../lib/db";
+import { connectDB, getConnectionStatus } from "../../../../lib/db"; // Fix import to use connectDB
 import mongoose from "mongoose";
 
 async function handler(req, res) {
@@ -8,8 +8,9 @@ async function handler(req, res) {
   }
 
   try {
-    const { db } = await connectToDatabase();
-    const client = db.client;
+    // Use connectDB instead of connectToDatabase
+    const connection = await connectDB();
+    const db = mongoose.connection.db;
 
     // Get database stats
     const stats = await db.stats();

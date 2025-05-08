@@ -1,6 +1,10 @@
 import React from "react";
 import Link from "next/link";
-import { FiHome, FiMapPin, FiBed, FiBath } from "react-icons/fi";
+// Fix icon imports - import individually to avoid barrel optimization issues
+import { FiHome } from "react-icons/fi";
+import { FiMapPin } from "react-icons/fi";
+import { FiBed } from "react-icons/fi";
+import { FiBath } from "react-icons/fi";
 
 /**
  * Functional component that maps over a list of listings
@@ -57,15 +61,15 @@ export default function ListingMap({
                         listing.status === "published"
                           ? "bg-green-100 text-green-800"
                           : listing.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-gray-100 text-gray-800"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-gray-100 text-gray-800"
                       }`}
                     >
                       {listing.status === "published"
                         ? "Active"
                         : listing.status === "pending"
-                        ? "Pending"
-                        : listing.status}
+                          ? "Pending"
+                          : listing.status}
                     </span>
                   </div>
                 )}

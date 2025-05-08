@@ -1,8 +1,8 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { getAuth } from "@clerk/nextjs/server";
-import { isAdmin, isValidRole, ROLES } from "../../../../lib/role-management";
+import { isAdmin, ROLES } from "../../../../lib/role-management";
 import { connectDB } from "../../../../lib/db";
-import User from "../../../../lib/models/User";
+import User from "../../../../models/User";
 
 /**
  * API handler for changing a user's role
@@ -14,7 +14,7 @@ import User from "../../../../lib/models/User";
  * - newRole: The new role to assign
  */
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // Only allow POST method
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
@@ -24,45 +24,47 @@ export default async function handler(req, res) {
 
   try {
     // Get the current authenticated user
-    const { userId: currentUserId } = getAuth(req);
-    if (!currentUserId) {
+    const auth = getAuth(req);
+    if (!auth?.userId) {
       return res.status(401).json({
         success: false,
         error: "Unauthorized",
       });
     }
 
-    // Get the current user from Clerk to check permissions
-    const currentUser = await clerkClient.users.getUser(currentUserId);
+    // Connect to database
+    await connectDB();
 
-    // Ensure the current user is an admin
-    if (!isAdmin(currentUser)) {
+    // Check if the current user is an admin
+    const adminUser = await User.findOne({ clerkId: auth.userId });
+    if (!adminUser || !isAdmin(adminUser)) {
       return res.status(403).json({
         success: false,
-        error: "Forbidden: Admin access required",
+        error: "Admin access required",
       });
     }
 
-    // Get request parameters
+    // Extract parameters from request
     const { userId, newRole } = req.body;
 
+    // Validate required parameters
     if (!userId || !newRole) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields (userId and newRole)",
+        error: "User ID and new role are required",
       });
     }
 
-    // Validate the new role
-    if (!isValidRole(newRole)) {
+    // Validate role is one of the defined roles
+    if (!Object.values(ROLES).includes(newRole)) {
       return res.status(400).json({
         success: false,
-        error: `Invalid role. Valid roles are: ${Object.values(ROLES).join(", ")}`,
+        error: `Invalid role: ${newRole}`,
       });
     }
 
-    // Get the target user from Clerk
-    const targetUser = await clerkClient.users.getUser(userId);
+    // Find the target user
+    const targetUser = await User.findOne({ clerkId: userId });
     if (!targetUser) {
       return res.status(404).json({
         success: false,
@@ -70,47 +72,34 @@ export default async function handler(req, res) {
       });
     }
 
-    // Super admins are protected
-    if (
-      targetUser.publicMetadata?.role === ROLES.SUPER_ADMIN &&
-      newRole !== ROLES.SUPER_ADMIN
-    ) {
-      return res.status(403).json({
-        success: false,
-        error: "Cannot modify super admin role",
-      });
-    }
+    // Store current role for response
+    const previousRole = targetUser.role;
 
-    // Update the role in Clerk
-    const oldRole = targetUser.publicMetadata?.role || ROLES.USER;
+    // Update user role in database
+    targetUser.role = newRole;
+    await targetUser.save();
+
+    // Update role in Clerk
     await clerkClient.users.updateUser(userId, {
       publicMetadata: {
-        ...targetUser.publicMetadata,
         role: newRole,
       },
     });
 
-    // Connect to database
-    await connectDB();
-
-    // Update the user in MongoDB
-    await User.findOneAndUpdate(
-      { clerkId: userId },
-      { role: newRole },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-
+    // Return success response
     return res.status(200).json({
       success: true,
-      userId,
-      oldRole,
+      previousRole,
       newRole,
+      userId,
+      message: `User role updated from ${previousRole} to ${newRole}`,
     });
   } catch (error) {
     console.error("Error changing user role:", error);
     return res.status(500).json({
       success: false,
-      error: "Failed to change user role",
+      error: "Server error",
+      message: error.message,
     });
   }
 }

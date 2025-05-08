@@ -1,8 +1,5 @@
-import {
-  checkBlobConnection,
-  getBlobConfigStatus,
-  isBlobConfigured,
-} from "../../../lib/blob";
+// Firebase Storage diagnostic endpoint
+// This replaces the previous Vercel Blob diagnostic since we've migrated to Firebase Storage
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -13,46 +10,86 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Check if Vercel Blob package is installed
+    // Check if Firebase Admin SDK is installed
     let packageCheck;
+    let firebaseAdmin = null;
+    let isFirebaseConfigured = false;
+    let checkFirebaseConnection = async () => ({
+      isConnected: false,
+      status: "error",
+      message: "Module not available",
+    });
+
     try {
-      // Try importing the package
-      require("@vercel/blob");
-      packageCheck = { installed: true };
+      // Try importing Firebase Admin
+      firebaseAdmin = await import("firebase-admin").catch(() => null);
+      packageCheck = { installed: !!firebaseAdmin };
+
+      // Check if we have a Firebase config
+      isFirebaseConfigured =
+        !!process.env.FIREBASE_PROJECT_ID &&
+        !!process.env.FIREBASE_CLIENT_EMAIL &&
+        !!process.env.FIREBASE_PRIVATE_KEY;
+
+      // Dynamic import of firebase config utility if it exists
+      try {
+        const firebaseUtils = await import(
+          "../../../lib/firebase-config"
+        ).catch(() => null);
+        if (firebaseUtils && firebaseUtils.checkFirebaseConnection) {
+          checkFirebaseConnection = firebaseUtils.checkFirebaseConnection;
+        }
+      } catch (err) {
+        console.warn("Firebase config utilities not available:", err.message);
+      }
     } catch (err) {
       packageCheck = {
         installed: false,
         error: err.message,
-        recommendation: "Run 'npm install @vercel/blob'",
+        recommendation: "Run 'npm install firebase-admin'",
       };
     }
 
     // Get configuration status
     const configStatus = {
-      isConfigured: isBlobConfigured(),
-      hasToken: !!process.env.BLOB_READ_WRITE_TOKEN,
+      isConfigured: isFirebaseConfigured,
+      hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+      hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+      hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
       environment: process.env.NODE_ENV,
     };
 
-    // Check connection
-    const connectionStatus = await checkBlobConnection();
+    // Check connection if possible
+    let connectionStatus;
+    try {
+      connectionStatus = await checkFirebaseConnection();
+    } catch (error) {
+      connectionStatus = {
+        isConnected: false,
+        status: "error",
+        message: `Connection check failed: ${error.message}`,
+      };
+    }
 
     // Diagnostic recommendations
     let recommendations = [];
     if (!packageCheck.installed) {
       recommendations.push(
-        "Install the @vercel/blob package with 'npm install @vercel/blob'"
+        "Install the Firebase Admin SDK with 'npm install firebase-admin'"
       );
     }
-    if (!configStatus.hasToken) {
-      recommendations.push("Add BLOB_READ_WRITE_TOKEN to your .env.local file");
-      recommendations.push(
-        "Create a Vercel Blob store with 'npx vercel blob new'"
-      );
+    if (!configStatus.hasProjectId) {
+      recommendations.push("Add FIREBASE_PROJECT_ID to your .env.local file");
+    }
+    if (!configStatus.hasClientEmail) {
+      recommendations.push("Add FIREBASE_CLIENT_EMAIL to your .env.local file");
+    }
+    if (!configStatus.hasPrivateKey) {
+      recommendations.push("Add FIREBASE_PRIVATE_KEY to your .env.local file");
     }
     if (connectionStatus.status === "error") {
-      recommendations.push("Verify your BLOB_READ_WRITE_TOKEN is valid");
-      recommendations.push("Ensure proper permissions for the token");
+      recommendations.push("Verify your Firebase credentials are valid");
+      recommendations.push("Ensure proper permissions for the service account");
     }
 
     return res.status(200).json({
@@ -65,14 +102,14 @@ export default async function handler(req, res) {
         recommendations:
           recommendations.length > 0 ? recommendations : ["No issues detected"],
         nextSteps: !configStatus.isConfigured
-          ? "Configure Vercel Blob with valid BLOB_READ_WRITE_TOKEN"
+          ? "Configure Firebase Storage with valid credentials"
           : connectionStatus.isConnected
-            ? "Your Vercel Blob setup appears to be working correctly"
+            ? "Your Firebase Storage setup appears to be working correctly"
             : "Fix connection issues based on recommendations",
       },
     });
   } catch (error) {
-    console.error("Blob diagnostic API error:", error);
+    console.error("Firebase Storage diagnostic API error:", error);
     return res.status(500).json({
       success: false,
       error: `Diagnostic failed: ${error.message}`,
