@@ -12,7 +12,6 @@ import Head from "next/head";
 import NextNProgress from "nextjs-progressbar";
 import dynamic from 'next/dynamic';
 import { useHydration } from "../lib/useHydration";
-import { monitorWebpackCompilation } from "../lib/next-module-helper";
 
 // Import monitoring conditionally to avoid build errors
 const initMonitoring = () => {
@@ -20,16 +19,26 @@ const initMonitoring = () => {
     // Use requestIdleCallback to initialize monitoring during browser idle time
     if ("requestIdleCallback" in window) {
       window.requestIdleCallback(() => {
+        // Load monitoring module (if available)
         import("../lib/monitoring")
           .then(({ initClientMonitoring }) => {
             initClientMonitoring();
           })
           .catch((err) => {
-            console.log("Monitoring module not available", err);
+            // Non-critical, can safely continue without monitoring
+            console.log("Monitoring module not available");
           });
           
-        // Initialize webpack monitoring
-        monitorWebpackCompilation();
+        // Initialize the safer webpack monitoring
+        import("../lib/next-module-helper")
+          .then(({ monitorWebpackCompilation }) => {
+            if (typeof monitorWebpackCompilation === 'function') {
+              monitorWebpackCompilation();
+            }
+          })
+          .catch(() => {
+            // Also non-critical
+          });
       });
     } else {
       // Fallback for browsers that don't support requestIdleCallback
@@ -38,12 +47,7 @@ const initMonitoring = () => {
           .then(({ initClientMonitoring }) => {
             initClientMonitoring();
           })
-          .catch((err) => {
-            console.log("Monitoring module not available", err);
-          });
-          
-        // Initialize webpack monitoring
-        monitorWebpackCompilation();
+          .catch(() => {});
       }, 2000); // Delay by 2 seconds
     }
   }
@@ -92,25 +96,6 @@ const DevTools = dynamic(
   { ssr: false }
 );
 
-// Create a module preloader for critical modules
-const preloadCriticalModules = async () => {
-  if (typeof window === "undefined") return;
-  
-  try {
-    // Import the module helper dynamically to avoid SSR issues
-    const { preloadModule } = await import("../lib/next-module-helper");
-    
-    // Preload critical modules in parallel
-    await Promise.all([
-      preloadModule("../contexts/AuthContext"),
-      preloadModule("../contexts/DatabaseContext"),
-      preloadModule("../lib/db")
-    ]);
-  } catch (error) {
-    console.warn("Failed to preload modules:", error);
-  }
-};
-
 function MyApp({ Component, pageProps }) {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
@@ -123,7 +108,6 @@ function MyApp({ Component, pageProps }) {
     // Delay non-critical operations
     const timer = setTimeout(() => {
       initMonitoring();
-      preloadCriticalModules();
     }, 1000);
     
     return () => clearTimeout(timer);

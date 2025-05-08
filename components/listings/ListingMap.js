@@ -1,10 +1,7 @@
 import React from "react";
 import Link from "next/link";
-// Fix icon imports - import individually to avoid barrel optimization issues
-import { FiHome } from "react-icons/fi";
-import { FiMapPin } from "react-icons/fi";
-import { FiBed } from "react-icons/fi";
-import { FiBath } from "react-icons/fi";
+// Standard import path for Feather icons
+import { FiHome, FiMapPin, FiBed, FiBath } from "react-icons/fi";
 
 /**
  * Functional component that maps over a list of listings

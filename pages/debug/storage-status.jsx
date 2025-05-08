@@ -40,7 +40,7 @@ export default function StorageStatusPage() {
     }
   };
 
-  // Run Blob diagnostic test
+  // Run Firebase diagnostic test
   const runBlobTest = async () => {
     setTestLoading("blob-detailed");
     try {
@@ -182,11 +182,11 @@ export default function StorageStatusPage() {
                     </div>
                   </div>
 
-                  {/* Vercel Blob Status */}
+                  {/* Firebase Storage Status */}
                   <div className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-medium text-lg">
-                        Vercel Blob Storage
+                        Firebase Storage
                       </h3>
                       <span
                         className={`px-2 py-1 rounded-full text-xs ${
@@ -238,14 +238,14 @@ export default function StorageStatusPage() {
                 </div>
               </div>
 
-              {/* Blob Diagnostics */}
+              {/* Firebase Storage Diagnostics */}
               <div className="mt-6">
                 <h3 className="font-medium text-lg mb-3">
-                  Vercel Blob Diagnostics
+                  Firebase Storage Diagnostics
                 </h3>
                 <div className="bg-gray-50 p-4 rounded-lg border">
                   <p className="mb-3">
-                    Run a detailed diagnostic to check Vercel Blob setup:
+                    Run a detailed diagnostic to check Firebase Storage setup:
                   </p>
                   <button
                     onClick={runBlobTest}
@@ -254,7 +254,7 @@ export default function StorageStatusPage() {
                   >
                     {testLoading === "blob-detailed"
                       ? "Running diagnostics..."
-                      : "Test Blob Configuration"}
+                      : "Test Firebase Configuration"}
                   </button>
 
                   {testResult?.blobDetailed && (
@@ -307,19 +307,18 @@ export default function StorageStatusPage() {
                   </div>
 
                   <div>
-                    <h3 className="font-medium mb-2">Vercel Blob Setup</h3>
+                    <h3 className="font-medium mb-2">Firebase Storage Setup</h3>
                     <ul className="list-disc pl-5 text-sm text-gray-600">
                       <li>
-                        Add <code>BLOB_READ_WRITE_TOKEN</code> to your{" "}
+                        Add <code>NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET</code> to your{" "}
                         <code>.env.local</code> file
                       </li>
                       <li>
-                        Create Vercel Blob store:{" "}
-                        <code>npx vercel@latest add blob</code>
+                        Add <code>NEXT_PUBLIC_FIREBASE_API_KEY</code> and other Firebase config values
                       </li>
                       <li>
-                        Add @vercel/blob to your project:{" "}
-                        <code>npm install @vercel/blob</code>
+                        Add Firebase to your project:{" "}
+                        <code>npm install firebase</code>
                       </li>
                     </ul>
                   </div>

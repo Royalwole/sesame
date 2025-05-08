@@ -3,16 +3,8 @@ import Link from "next/link";
 import Image from "next/image";
 import PropTypes from "prop-types";
 import { useInView } from "react-intersection-observer";
-// Fix icon imports - import individually to avoid barrel optimization issues
-import { FiHome } from "react-icons/fi";
-import { FiBed } from "react-icons/fi";
-import { FiBath } from "react-icons/fi";
-import { FiSquare } from "react-icons/fi";
-import { FiHeart } from "react-icons/fi";
-import { FiMapPin } from "react-icons/fi";
-import { FiClock } from "react-icons/fi";
-import { FiAlertTriangle } from "react-icons/fi";
-import { FiImage } from "react-icons/fi";
+// Standard import path for Feather icons
+import { FiHome, FiBed, FiBath, FiSquare, FiHeart, FiMapPin, FiClock, FiAlertTriangle, FiImage } from "react-icons/fi";
 
 // Cache status constants outside component to prevent re-creation
 const STATUS_STYLES = Object.freeze({
