@@ -28,49 +28,12 @@ export default function Header() {
   // Close mobile menu when route changes
   useEffect(() => {
     setIsMenuOpen(false);
-    if (typeof window !== "undefined") {
-      const mobileMenu = document.getElementById("mobile-menu");
-      if (mobileMenu) {
-        mobileMenu.style.display = "none";
-      }
-    }
   }, [router.pathname]);
 
-  // Setup global menu toggle function with vanilla JS
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Define a global function to toggle the menu
-      window.toggleMobileMenu = function () {
-        const mobileMenu = document.getElementById("mobile-menu");
-        const currentDisplay = mobileMenu.style.display;
-
-        if (currentDisplay === "none" || currentDisplay === "") {
-          // Open menu
-          mobileMenu.style.display = "block";
-          setTimeout(() => {
-            mobileMenu.style.opacity = "1";
-            mobileMenu.style.maxHeight = "1000px";
-          }, 10);
-          setIsMenuOpen(true);
-        } else {
-          // Close menu
-          mobileMenu.style.opacity = "0";
-          mobileMenu.style.maxHeight = "0";
-          setTimeout(() => {
-            mobileMenu.style.display = "none";
-          }, 300);
-          setIsMenuOpen(false);
-        }
-      };
-    }
-
-    return () => {
-      // Clean up when component unmounts
-      if (typeof window !== "undefined") {
-        delete window.toggleMobileMenu;
-      }
-    };
-  }, []);
+  // Directly handle the mobile menu toggle without relying on global window function
+  const toggleMobileMenu = () => {
+    setIsMenuOpen((prevState) => !prevState);
+  };
 
   // Navigation links - customize as needed
   const navLinks = [
@@ -171,12 +134,12 @@ export default function Header() {
               )}
             </div>
 
-            {/* Mobile menu button with direct onclick attribute */}
+            {/* Mobile menu button - simplified with direct state toggle */}
             <div className="flex md:hidden">
               <button
                 ref={menuButtonRef}
                 data-testid="mobile-menu-button"
-                onClick={() => window.toggleMobileMenu()}
+                onClick={toggleMobileMenu}
                 type="button"
                 aria-label={isMenuOpen ? "Close menu" : "Open menu"}
                 className="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-wine hover:bg-gray-100 focus:outline-none"
@@ -192,16 +155,13 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Mobile navigation - using ID for direct DOM access */}
+      {/* Mobile navigation - using React state instead of direct DOM manipulation */}
       <div
-        id="mobile-menu"
-        style={{
-          display: "none",
-          transition: "opacity 0.3s ease-in-out, max-height 0.3s ease-in-out",
-          maxHeight: "0",
-          opacity: "0",
-        }}
-        className="md:hidden bg-white border-t border-gray-200 absolute w-full z-20 shadow-lg"
+        className={`md:hidden bg-white border-t border-gray-200 absolute w-full z-20 shadow-lg transition-all duration-300 ease-in-out ${
+          isMenuOpen
+            ? "opacity-100 max-h-[500px]"
+            : "opacity-0 max-h-0 overflow-hidden"
+        }`}
       >
         <div className="pt-2 pb-4 space-y-1">
           {navLinks.map((link) => (
@@ -213,11 +173,7 @@ export default function Header() {
                   ? "bg-wine/10 text-wine border-l-4 border-wine"
                   : "text-gray-600 hover:bg-gray-50 hover:text-wine"
               }`}
-              onClick={() => {
-                if (typeof window !== "undefined") {
-                  window.toggleMobileMenu();
-                }
-              }}
+              onClick={toggleMobileMenu}
             >
               {link.name}
             </Link>
@@ -234,11 +190,7 @@ export default function Header() {
                     : "/dashboard"
               }
               className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
-              onClick={() => {
-                if (typeof window !== "undefined") {
-                  window.toggleMobileMenu();
-                }
-              }}
+              onClick={toggleMobileMenu}
             >
               <div className="flex items-center">
                 <FiUser className="mr-2" /> Dashboard
@@ -249,22 +201,14 @@ export default function Header() {
               <Link
                 href="/sign-in"
                 className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    window.toggleMobileMenu();
-                  }
-                }}
+                onClick={toggleMobileMenu}
               >
                 Sign In
               </Link>
               <Link
                 href="/sign-up"
                 className="block pl-3 pr-4 py-2 text-base font-medium bg-gray-50 text-wine hover:bg-gray-100"
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    window.toggleMobileMenu();
-                  }
-                }}
+                onClick={toggleMobileMenu}
               >
                 Sign Up
               </Link>

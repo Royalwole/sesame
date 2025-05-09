@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   FiHome, 
@@ -18,15 +18,42 @@ import {
   FiAward,
   FiStar,
   FiClock as FiClockIcon,
-  FiEye
+  FiEye,
+  FiUser,
+  FiSettings,
+  FiLogOut,
+  FiX,
+  FiMenu
 } from 'react-icons/fi';
 import { getImageUrl, handleImageError } from '../../lib/image-utils';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 export default function UserDashboard() {
-  const { dbUser } = useAuth();
+  const { dbUser, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const [showFallbackBanner, setShowFallbackBanner] = useState(true);
+  const router = useRouter();
+  
+  // Hide fallback banner after 3 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowFallbackBanner(false);
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+  
+  // Handle sign out
+  const handleSignOut = async () => {
+    try {
+      await logout();
+      router.push('/auth/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   // Get current time to personalize greeting
   const getCurrentGreeting = () => {
@@ -118,7 +145,54 @@ export default function UserDashboard() {
   };
 
   return (
-    <div className="pb-12 pt-6">
+    <div className="pb-12 pt-6 relative">
+      {/* Fallback data notification banner */}
+      {showFallbackBanner && (
+        <div className="fixed top-0 left-0 right-0 bg-blue-600 text-white py-3 px-4 shadow-md z-50 transition-opacity duration-300">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center">
+              <FiAlertCircle className="mr-2" />
+              <span>We're using locally available data while your profile syncs. Some features may be limited.</span>
+            </div>
+            <div className="flex items-center">
+              <button 
+                className="text-white bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded-md text-sm font-medium mr-3"
+                onClick={() => {/* Sync function would go here */}}
+              >
+                Sync Now
+              </button>
+              <button 
+                className="text-white hover:text-blue-100"
+                onClick={() => setShowFallbackBanner(false)}
+              >
+                <FiX />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* User Profile & Actions Menu */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+        <div className="flex justify-end">
+          <div className="relative inline-block text-left">
+            <div className="flex items-center space-x-4">
+              <Link href="/dashboard/profile" className="flex items-center text-gray-700 hover:text-wine transition-colors">
+                <FiUser className="mr-2" />
+                <span>Edit Profile</span>
+              </Link>
+              <button 
+                onClick={handleSignOut}
+                className="flex items-center text-gray-700 hover:text-red-500 transition-colors"
+              >
+                <FiLogOut className="mr-2" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Hero Banner with improved padding and larger fonts */}
       <div className="bg-gradient-to-r from-wine/95 to-wine/75 rounded-xl shadow-xl mb-8 overflow-hidden relative">
         {/* Removed the problematic pattern image reference that was causing the error */}
