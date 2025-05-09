@@ -24,8 +24,21 @@ export async function fetchUserDashboardData() {
       throw new Error(errorData.message || "Error fetching dashboard data");
     }
 
-    const { data } = await response.json();
-    return data;
+    // Handle the response properly
+    const result = await response.json();
+    // Return the data directly if it exists, otherwise provide a default structure
+    return (
+      result.data || {
+        stats: {
+          savedListings: 0,
+          viewedListings: 0,
+          upcomingInspections: 0,
+          recentSearches: 0,
+          matches: 0,
+          notifications: 0,
+        },
+      }
+    );
   } catch (error) {
     console.error("Dashboard fetch error:", error);
     throw error;

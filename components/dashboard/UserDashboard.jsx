@@ -246,13 +246,11 @@ export default function UserDashboard() {
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
                         {[
                             { icon: FiHeart, label: 'Saved Listings', value: stats.savedListings },
-                            { icon: FiEye, label: 'Viewed Listings', value: stats.viewedListings },
                             { icon: FiCalendar, label: 'Inspections', value: stats.upcomingInspections },
                             { icon: FiSearch, label: 'Recent Searches', value: stats.recentSearches },
-                            { icon: FiStar, label: 'Matches', value: stats.matches }
                         ].map((stat, index) => (
                             <div
                                 key={index}
