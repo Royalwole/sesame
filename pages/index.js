@@ -6,11 +6,12 @@ import { BsHouseDoor, BsBuilding, BsMap } from "react-icons/bs";
 import { FiSearch } from "react-icons/fi";
 import AuthDebugger from "../components/utils/AuthDebugger";
 
-// Add fallback to system fonts in case Google Fonts can't be reached
+// Make the font optional to prevent build failures when Google Fonts is unreachable
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   fallback: ["system-ui", "Arial", "sans-serif"],
+  optional: true, // Add this line to make the font optional
 });
 
 export default function Home() {
