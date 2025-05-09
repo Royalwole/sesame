@@ -127,10 +127,8 @@ export function AuthProvider({ children }) {
         // Sign out via Clerk
         await signOut();
 
-        // Redirect if needed
-        if (redirectToSignIn) {
-          router.push(`/auth/sign-in`);
-        }
+        // Redirect to home page instead of sign-in page
+        router.push("/");
       } catch (e) {
         console.error("Error during sign out:", e);
       }

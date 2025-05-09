@@ -106,7 +106,7 @@ export default function UserDashboard() {
     const handleSignOut = async () => {
         try {
             await signOut(); // Fixed: Using signOut instead of logout
-            router.push('/auth/login');
+            router.push('/'); // Changed from '/auth/login' to '/' to direct users to home page
         } catch (error) {
             console.error('Error signing out:', error);
         }
