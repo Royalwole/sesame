@@ -51,7 +51,7 @@ export default function Home() {
 
   return (
     <>
-      <main className="min-h-screen">
+      <main className="min-h-screen pt-16">
         {/* Hero Section */}
         <section className="relative h-[600px] flex items-center">
           <div className="absolute inset-0 z-0">
