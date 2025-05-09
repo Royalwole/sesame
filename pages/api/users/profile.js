@@ -23,14 +23,40 @@ async function handler(req, res) {
       });
     }
 
-    // Find the user in the database
-    const user = await User.findOne({ clerkId: auth.userId });
+    // Find the user in the database with improved error handling
+    let user = await User.findOne({ clerkId: auth.userId });
 
+    // If user not found by clerkId, try finding by email as fallback
+    if (!user && auth.sessionClaims?.email) {
+      console.log("User not found by clerkId, trying email lookup");
+      user = await User.findOne({ email: auth.sessionClaims.email });
+
+      // If found by email but clerkId doesn't match, update it
+      if (user && user.clerkId !== auth.userId) {
+        console.log("Updating user clerkId to match authentication");
+        user.clerkId = auth.userId;
+        await user.save();
+      }
+    }
+
+    // If still no user found, create a new user record
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
+      if (!auth.sessionClaims?.email) {
+        return res.status(400).json({
+          success: false,
+          error: "Unable to create user profile: email required",
+        });
+      }
+
+      console.log("Creating new user profile");
+      user = new User({
+        clerkId: auth.userId,
+        email: auth.sessionClaims.email,
+        firstName: auth.sessionClaims?.firstName || "",
+        lastName: auth.sessionClaims?.lastName || "",
+        role: "user", // Default role
       });
+      await user.save();
     }
 
     // Handle GET request - Return user profile data

@@ -13,7 +13,7 @@ import { useRouter } from 'next/router';
 import { fetchUserDashboardData, fetchUserFavorites, fetchUserInspections } from '../../services/dashboardService';
 
 export default function UserDashboard() {
-    const { dbUser, logout } = useAuth();
+    const { dbUser, signOut } = useAuth(); // Changed from "logout" to "signOut" to match AuthContext
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('overview');
     const [showFallbackBanner, setShowFallbackBanner] = useState(false);
@@ -105,7 +105,7 @@ export default function UserDashboard() {
 
     const handleSignOut = async () => {
         try {
-            await logout();
+            await signOut(); // Fixed: Using signOut instead of logout
             router.push('/auth/login');
         } catch (error) {
             console.error('Error signing out:', error);
