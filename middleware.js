@@ -1,5 +1,5 @@
 // Middleware Configuration
-import { clerkMiddleware, getAuth } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 // Configuration for public routes and authentication
@@ -56,10 +56,11 @@ function isClerkPath(path) {
  * Handles authentication and protection of routes using Clerk middleware
  * with added error handling to prevent middleware crashes
  */
-export default function middleware(request) {
+export default clerkMiddleware((auth, request) => {
   try {
-    // Get the current path
-    const { pathname } = request.nextUrl;
+    // Get the current path - correctly access URL from the request
+    const url = new URL(request.url);
+    const pathname = url.pathname;
 
     // Check if this is a public route (no auth needed)
     if (isPublicRoute(pathname)) {
@@ -71,9 +72,8 @@ export default function middleware(request) {
       return NextResponse.next();
     }
 
-    // Use getAuth instead of relying on the middleware param
-    const auth = getAuth(request);
-    const userId = auth?.userId;
+    // We already have auth from middleware params
+    const userId = auth.userId;
 
     // Skip redirects for API routes to prevent redirect loops
     const isApiRoute = pathname.startsWith("/api/");
@@ -86,8 +86,7 @@ export default function middleware(request) {
       // Only add redirect for page routes, not for API routes
       if (!pathname.startsWith("/api/")) {
         // Use just the pathname and any query parameters for the redirect
-        const url = new URL(request.url);
-        const redirectPath = url.pathname + url.search;
+        const redirectPath = pathname + url.search;
         signInUrl.searchParams.set("redirect_url", redirectPath);
       }
 
@@ -103,7 +102,7 @@ export default function middleware(request) {
     // Return a next response to prevent the middleware from crashing
     return NextResponse.next();
   }
-}
+});
 
 // We still need Clerk to protect our routes, but we handle auth logic ourselves
 export const config = {

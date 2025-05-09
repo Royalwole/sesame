@@ -105,8 +105,8 @@ export default function SignInPage() {
   return (
     <>
       <Head>
-        <title>Sign In | TopDial</title>
-        <meta name="description" content="Sign in to your TopDial account" />
+        <title>Sign In | Topdial</title>
+        <meta name="description" content="Sign in to your Topdial.ng account" />
       </Head>
 
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -116,7 +116,7 @@ export default function SignInPage() {
               <img src="/logo.svg" alt="TopDial" className="h-12 mx-auto" />
             </Link>
             <h2 className="mt-6 text-3xl font-bold text-gray-900">Welcome back</h2>
-            <p className="mt-2 text-gray-600">Sign in to your TopDial account</p>
+            <p className="mt-2 text-gray-600">Sign in to your Topdial account</p>
           </div>
         
           <SignIn

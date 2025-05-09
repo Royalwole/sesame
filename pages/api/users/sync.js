@@ -43,11 +43,38 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get auth directly from Clerk with enhanced error handling
+    // Get auth from Clerk using the session token from the request
+    // This approach works with our middleware setup
     try {
-      const auth = getAuth(req);
+      // Get the auth session from the request, using headers for API routes
+      const sessionToken =
+        req.headers.authorization?.split("Bearer ")[1] ||
+        req.cookies?.__session ||
+        req.cookies?.["__clerk_session"];
 
-      if (!auth?.userId) {
+      let clerkId;
+
+      // First try the middleware-applied auth
+      const auth = getAuth(req);
+      if (auth?.userId) {
+        clerkId = auth.userId;
+      }
+      // Fallback to direct verification if needed
+      else if (sessionToken) {
+        try {
+          const session =
+            await clerkClient.sessions.verifySession(sessionToken);
+          clerkId = session.userId;
+        } catch (sessionError) {
+          console.error(
+            `[${requestId}] Session verification error:`,
+            sessionError
+          );
+        }
+      }
+
+      // If we still don't have a userId, return unauthorized
+      if (!clerkId) {
         console.log(`[${requestId}] No userId in auth object`);
         return res.status(401).json({
           success: false,
@@ -57,7 +84,6 @@ export default async function handler(req, res) {
         });
       }
 
-      const clerkId = auth.userId;
       console.log(`[${requestId}] Syncing user data for: ${clerkId}`);
 
       // Get user profile from Clerk

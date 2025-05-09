@@ -14,8 +14,8 @@ export default function AuthPage() {
     return (
       <>
         <Head>
-          <title>Sign In | TopDial</title>
-          <meta name="description" content="Sign in to your TopDial account" />
+          <title>Sign In | Topdial</title>
+          <meta name="description" content="Sign in to your Topdial.ng account" />
         </Head>
         <div className="flex min-h-screen items-center justify-center">
           <SignIn

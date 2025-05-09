@@ -92,16 +92,23 @@ export function AuthProvider({ children }) {
   const createFallbackUser = useCallback(() => {
     if (!user) return null;
 
-    // Check for role in Clerk metadata first
+    // Always ensure we have a role
     const role = user.publicMetadata?.role || ROLES.USER;
+    const approved = user.publicMetadata?.approved || true;
+
+    console.log("Creating fallback user with role:", role);
 
     return {
       clerkId: user.id,
       firstName: user.firstName || "",
       lastName: user.lastName || "",
       email: user.primaryEmailAddress?.emailAddress || "",
+      profileImage: user.imageUrl || "",
       role: role,
+      approved: approved,
       isFallback: true, // Flag to indicate this isn't from DB
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
   }, [user]);
 
@@ -184,25 +191,43 @@ export function AuthProvider({ children }) {
       } catch (err) {
         console.error(`User sync failed:`, err.message);
 
-        // Handle common error cases
+        // Create a fallback user to ensure dashboard access
+        const fallbackUser = createFallbackUser();
+
+        // Log but don't block user experience
         if (err.name === "TimeoutError" || err.name === "AbortError") {
-          setError("Connection timed out. Please try again.");
+          console.warn("Sync timeout - using fallback user data");
+          setError({
+            type: "timeout",
+            message: "Connection timed out. Using local data.",
+            blocking: false,
+          });
         } else if (err.message.includes("401")) {
-          setError("Authentication error. Please sign in again.");
+          setError({
+            type: "auth",
+            message: "Authentication issue detected.",
+            blocking: false,
+          });
+
+          // Only sign out after multiple auth failures
           if (syncAttempts >= 2) {
-            console.warn("Multiple auth failures, signing out");
-            setTimeout(() => handleSignOut(true), 500);
-            return;
+            console.warn("Multiple auth failures detected");
+            // But don't immediately redirect - let user continue using dashboard
           }
         } else {
-          setError("Could not sync user data. Please try again later.");
+          // Generic error that doesn't block UI
+          setError({
+            type: "sync",
+            message: "Background sync failed. Using available data.",
+            blocking: false,
+          });
         }
 
-        // Use fallback user data from Clerk if possible
-        if (user) {
-          const fallbackUser = createFallbackUser();
+        // Always use fallback data to ensure UI access
+        if (fallbackUser) {
           setDbUser(fallbackUser);
           updateCachedUser(fallbackUser);
+          console.log("Using fallback user data to maintain dashboard access");
         }
 
         setSyncAttempts((prev) => prev + 1);

@@ -6,6 +6,7 @@ import ErrorMessage from "../../components/utils/ErrorMessage";
 import { useAuth } from "../../contexts/AuthContext";
 import Head from "next/head";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 export default function UserDashboardPage() {
   const router = useRouter();
@@ -37,8 +38,9 @@ export default function UserDashboardPage() {
     loadingTimeoutRef.current = setTimeout(() => {
       if (loadingState === "loading") {
         logDebug("Safety timeout triggered");
-        setLoadingState("error");
-        setDataError("Loading took too long. Please try refreshing.");
+        setLoadingState("ready"); // Changed from "error" to "ready" to avoid blocking
+        // Show a non-blocking toast instead of error state
+        toast.error("Some data is taking longer to load. You can still use your dashboard.");
       }
     }, 10000);
 
@@ -64,8 +66,17 @@ export default function UserDashboardPage() {
     if (dbUser) {
       logDebug("User authenticated, loading dashboard data");
       fetchDashboardData();
+      
+      // Show non-blocking notification if there were sync issues
+      if (hasError && error) {
+        if (typeof error === 'object') {
+          toast.error(error.message || "Background sync issue - using available data");
+        } else {
+          toast.error("Background sync issue - using available data");
+        }
+      }
     }
-  }, [authLoading, isAuthenticated, dbUser, router]);
+  }, [authLoading, isAuthenticated, dbUser, router, hasError, error]);
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
@@ -80,8 +91,10 @@ export default function UserDashboardPage() {
       logDebug("Data loaded successfully");
     } catch (err) {
       logDebug("Error fetching data", { error: err.message });
-      setDataError("Failed to load dashboard data. Please try again.");
-      setLoadingState("error");
+      // Don't block access on dashboard data errors
+      setLoadingState("ready");
+      // Show a toast instead of blocking error
+      toast.error("Some dashboard data couldn't be loaded. You can still use your dashboard.");
     }
   };
 
@@ -122,14 +135,26 @@ export default function UserDashboardPage() {
 
   // Handle manual refresh
   const handleManualSync = async () => {
-    setLoadingState("syncing");
-    try {
-      await syncUserData(true); // Force refresh
-      await fetchDashboardData();
-    } catch (err) {
-      setDataError("Sync failed. Please try again.");
-      setLoadingState("error");
-    }
+    toast.promise(
+      (async () => {
+        setLoadingState("syncing");
+        try {
+          await syncUserData(true); // Force refresh
+          await fetchDashboardData();
+          return "Data synchronized successfully";
+        } catch (err) {
+          console.error("Sync error:", err);
+          // Always continue to dashboard even on error
+          setLoadingState("ready");
+          throw new Error("Sync failed, but you can continue using your dashboard");
+        }
+      })(),
+      {
+        loading: 'Synchronizing data...',
+        success: (message) => message,
+        error: (err) => err.message,
+      }
+    );
   };
 
   // Loading states
@@ -141,147 +166,71 @@ export default function UserDashboardPage() {
     return <Loader message="Synchronizing your data..." />;
   }
 
-  // Account setup in progress (using fallback data)
-  if (isAuthenticated && dbUser?.isFallback) {
+  // ALWAYS show the dashboard for authenticated users, even with fallback data
+  // We'll completely skip the error/setup screens and go straight to the dashboard
+  if (isAuthenticated && dbUser) {
     return (
       <>
         <Head>
-          <title>Account Setup | TopDial</title>
+          <title>User Dashboard | TopDial</title>
         </Head>
-        <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-          <div className="max-w-3xl mx-auto">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center mb-4 text-blue-500">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-8 w-8 mr-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <h1 className="text-2xl font-bold">Account Setup</h1>
-              </div>
-
-              <div className="mb-6 p-4 bg-blue-50 rounded-md">
-                <p className="font-medium text-blue-800">Welcome to TopDial!</p>
-                <p className="text-blue-700">We're finishing up your account setup.</p>
-              </div>
-
-              <p className="text-gray-600 mb-4">
-                We're still syncing your profile information. This may be because:
-              </p>
-
-              <ul className="list-disc pl-5 mb-6 space-y-1 text-gray-600">
-                <li>You've recently created your account</li>
-                <li>There may be temporary connection issues</li>
-                <li>Your browser session might need to be refreshed</li>
-              </ul>
-
-              {hasError && (
-                <div className="p-4 bg-red-50 rounded-md mb-6">
-                  <p className="text-red-800 font-medium">Error:</p>
-                  <p className="text-red-700">{error || "Unknown error occurred"}</p>
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={handleManualSync}
-                  disabled={syncAttempts >= 3}
-                  className={`px-4 py-2 ${
-                    syncAttempts >= 3
-                      ? "bg-gray-300 cursor-not-allowed"
-                      : "bg-blue-500 hover:bg-blue-600"
-                  } text-white rounded`}
-                >
-                  {syncAttempts >= 3 ? "Try Again Later" : "Retry Synchronization"}
-                </button>
-
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
-                >
-                  Refresh Page
-                </button>
-
-                <Link
-                  href="/"
-                  className="px-4 py-2 bg-white border border-gray-300 text-center text-gray-800 rounded hover:bg-gray-50"
-                >
-                  Return to Homepage
-                </Link>
-              </div>
-
-              {syncAttempts > 0 && (
-                <div className="mt-4 text-sm text-gray-600">
-                  <p>
-                    Sync attempt {syncAttempts}/3
-                    {syncAttempts >= 3
-                      ? ". Maximum attempts reached. Please try again later."
-                      : ""}
-                  </p>
-                </div>
-              )}
+        <UserDashboard
+          user={dbUser}
+          favorites={favorites}
+          inspections={inspections}
+        />
+        
+        {/* If we're using fallback data, show a subtle info banner */}
+        {dbUser?.isFallback && process.env.NODE_ENV !== 'development' && (
+          <div className="fixed top-0 left-0 right-0 bg-blue-500 text-white p-2 text-center text-sm z-50">
+            We're using locally available data while your profile syncs. Some features may be limited.
+            <button 
+              onClick={handleManualSync}
+              className="ml-2 bg-white text-blue-700 px-2 py-0.5 text-xs rounded hover:bg-blue-50"
+            >
+              Sync Now
+            </button>
+          </div>
+        )}
+        
+        {/* Debug panel in development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="fixed bottom-4 right-4 bg-white p-3 border rounded shadow-lg text-xs max-w-xs opacity-70 hover:opacity-100 z-50">
+            <h3 className="font-bold mb-1">Debug Info</h3>
+            <p>Auth: {isAuthenticated ? 'Yes' : 'No'}</p>
+            <p>Role: {dbUser?.role || 'None'}</p>
+            <p>State: {loadingState}</p>
+            <p>Fallback: {dbUser?.isFallback ? 'Yes' : 'No'}</p>
+            <div className="mt-1 flex gap-1">
+              <button 
+                onClick={handleManualSync}
+                className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
+              >
+                Sync
+              </button>
+              <button 
+                onClick={() => window.location.reload()} 
+                className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-xs"
+              >
+                Reload
+              </button>
             </div>
           </div>
-        </div>
+        )}
       </>
     );
   }
 
-  // Error state
+  // Error state - This should rarely be reached now since we show the dashboard with fallback data
   if (loadingState === "error" || dataError) {
     return (
       <ErrorMessage 
-        message={dataError || "An error occurred loading your dashboard"} 
+        message="We're having trouble loading your dashboard. Please refresh the page."
         onRetry={fetchDashboardData}
       />
     );
   }
 
-  // Render dashboard when everything is ready
-  return (
-    <>
-      <Head>
-        <title>User Dashboard | TopDial</title>
-      </Head>
-      <UserDashboard
-        user={dbUser}
-        favorites={favorites}
-        inspections={inspections}
-      />
-      
-      {/* Debug panel in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="fixed bottom-4 right-4 bg-white p-3 border rounded shadow-lg text-xs max-w-xs opacity-70 hover:opacity-100 z-50">
-          <h3 className="font-bold mb-1">Debug Info</h3>
-          <p>Auth: {isAuthenticated ? 'Yes' : 'No'}</p>
-          <p>Role: {dbUser?.role || 'None'}</p>
-          <p>State: {loadingState}</p>
-          <p>Fallback: {dbUser?.isFallback ? 'Yes' : 'No'}</p>
-          <div className="mt-1 flex gap-1">
-            <button 
-              onClick={handleManualSync}
-              className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
-            >
-              Sync
-            </button>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="px-1.5 py-0.5 bg-gray-100 text-gray-800 rounded text-xs"
-            >
-              Reload
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  // Loading state as final fallback
+  return <Loader message="Preparing your dashboard..." />;
 }
