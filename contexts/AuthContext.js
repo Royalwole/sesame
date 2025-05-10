@@ -4,6 +4,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useUser, useClerk, useAuth as useClerkAuth } from "@clerk/nextjs";
 import { useDatabaseConnection } from "./DatabaseContext";
@@ -22,7 +23,7 @@ const AuthContext = createContext();
 // Cache configuration
 const USER_CACHE_CONFIG = {
   storageKey: "td_user_cache",
-  ttl: 600000, // 10 minutes (increased from 5 minutes for better UX)
+  ttl: 1800000, // 30 minutes (increased from 10 minutes for better offline resilience)
 };
 
 // Auth provider component
@@ -37,7 +38,21 @@ export function AuthProvider({ children }) {
   const [lastSynced, setLastSynced] = useState(null);
   const { isConnected } = useDatabaseConnection();
   const [syncAttempts, setSyncAttempts] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
   const MAX_SYNC_ATTEMPTS = 3;
+  const MAX_RETRIES = 2;
+  // Use a ref to track if we've already tried to sync to prevent loops
+  const hasSyncedRef = useRef(false);
+  // Track the user ID to detect actual changes
+  const previousUserIdRef = useRef(null);
+
+  // Calculate exponential backoff delay
+  const getRetryDelay = useCallback((retryAttempt) => {
+    // Base delay of 1 second with exponential backoff capped at 10 seconds
+    const delay = Math.min(Math.pow(2, retryAttempt) * 1000, 10000);
+    // Add some randomness to prevent all clients retrying at the same time
+    return delay + Math.random() * 1000;
+  }, []);
 
   // Check if we should use cached user data
   const checkCachedUser = useCallback(() => {
@@ -123,6 +138,8 @@ export function AuthProvider({ children }) {
 
         setDbUser(null);
         setError(null);
+        setRetryCount(0); // Reset retry count on sign out
+        hasSyncedRef.current = false; // Reset sync flag
 
         // Sign out via Clerk
         await signOut();
@@ -163,12 +180,19 @@ export function AuthProvider({ children }) {
       setError(null);
 
       try {
+        // Create abort controller for timeout
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => abortController.abort(), 8000);
+
         const response = await fetch("/api/users/sync", {
           method: "GET",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          signal: AbortSignal.timeout(8000), // Modern timeout approach
+          signal: abortController.signal,
         });
+
+        // Clear the timeout since request completed
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           throw new Error(`${response.status}: ${response.statusText}`);
@@ -185,6 +209,7 @@ export function AuthProvider({ children }) {
         setLastSynced(new Date());
         updateCachedUser(userData);
         setSyncAttempts(0);
+        setRetryCount(0); // Reset retry count on success
         setError(null);
       } catch (err) {
         console.error(`User sync failed:`, err.message);
@@ -192,14 +217,27 @@ export function AuthProvider({ children }) {
         // Create a fallback user to ensure dashboard access
         const fallbackUser = createFallbackUser();
 
-        // Log but don't block user experience
-        if (err.name === "TimeoutError" || err.name === "AbortError") {
+        // Handle specific error types
+        if (err.name === "AbortError") {
           console.warn("Sync timeout - using fallback user data");
           setError({
             type: "timeout",
             message: "Connection timed out. Using local data.",
             blocking: false,
           });
+
+          // Retry with exponential backoff if we haven't hit max retries
+          if (retryCount < MAX_RETRIES && !force) {
+            const delay = getRetryDelay(retryCount);
+            console.log(
+              `Will retry sync in ${delay}ms (attempt ${retryCount + 1})`
+            );
+
+            setTimeout(() => {
+              setRetryCount((prev) => prev + 1);
+              syncUserData(true);
+            }, delay);
+          }
         } else if (err.message.includes("401")) {
           setError({
             type: "auth",
@@ -207,8 +245,8 @@ export function AuthProvider({ children }) {
             blocking: false,
           });
 
-          // Only sign out after multiple auth failures
-          if (syncAttempts >= 2) {
+          // Only sign out after multiple auth failures and if not using fallback
+          if (syncAttempts >= MAX_SYNC_ATTEMPTS && !dbUser?.isFallback) {
             console.warn("Multiple auth failures detected");
             // But don't immediately redirect - let user continue using dashboard
           }
@@ -219,13 +257,31 @@ export function AuthProvider({ children }) {
             message: "Background sync failed. Using available data.",
             blocking: false,
           });
+
+          // Retry for network/server errors with exponential backoff
+          if (retryCount < MAX_RETRIES && !force) {
+            const delay = getRetryDelay(retryCount);
+            console.log(
+              `Will retry sync in ${delay}ms (attempt ${retryCount + 1})`
+            );
+
+            setTimeout(() => {
+              setRetryCount((prev) => prev + 1);
+              syncUserData(true);
+            }, delay);
+          }
         }
 
         // Always use fallback data to ensure UI access
         if (fallbackUser) {
-          setDbUser(fallbackUser);
-          updateCachedUser(fallbackUser);
-          console.log("Using fallback user data to maintain dashboard access");
+          // Only set fallback user if we don't have a user already
+          if (!dbUser) {
+            setDbUser(fallbackUser);
+            updateCachedUser(fallbackUser);
+            console.log(
+              "Using fallback user data to maintain dashboard access"
+            );
+          }
         }
 
         setSyncAttempts((prev) => prev + 1);
@@ -237,22 +293,32 @@ export function AuthProvider({ children }) {
     [
       isSignedIn,
       isLoaded,
-      user,
       checkCachedUser,
       updateCachedUser,
-      handleSignOut,
-      syncAttempts,
       createFallbackUser,
+      getRetryDelay,
+      retryCount,
+      dbUser,
     ]
   );
 
   // Initial data sync when auth state changes
   useEffect(() => {
+    // Skip if already synced for this user
+    if (user?.id === previousUserIdRef.current && hasSyncedRef.current) {
+      return;
+    }
+
     // Only sync when Clerk is loaded and we know about DB connection
     if (isLoaded && isConnected !== undefined) {
+      // Update tracking refs
+      previousUserIdRef.current = user?.id;
+      hasSyncedRef.current = true;
+
+      // Execute the sync
       syncUserData();
     }
-  }, [isSignedIn, isLoaded, isConnected, syncUserData]);
+  }, [isSignedIn, isLoaded, isConnected, user?.id]);
 
   // Derived auth state using the role management utility functions
   const isAuthenticated = !!isSignedIn;

@@ -8,7 +8,7 @@ import { useAuth } from "../../contexts/AuthContext";
 
 export default function Header() {
   const router = useRouter();
-  const { isSignedIn } = useUser();
+  const { isSignedIn, isLoaded } = useUser();
   const { isAgent, isAdmin } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -45,6 +45,13 @@ export default function Header() {
     { name: "Contact", href: "/contact" },
   ];
 
+  // Debug user auth state
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      console.log("Auth state in header:", { isLoaded, isSignedIn });
+    }
+  }, [isLoaded, isSignedIn]);
+
   return (
     <header
       className={`sticky top-0 z-30 w-full transition-all duration-300 ${
@@ -60,25 +67,24 @@ export default function Header() {
                 <Image
                   src="/logo.svg"
                   alt="Topdial.ng"
-                  width={120}
-                  height={38}
+                  width={140}
+                  height={40}
+                  className="h-10 w-auto"
                 />
-                <div className="absolute -bottom-1 left-0 w-10 h-0.5 bg-gradient-to-r from-amber-400 to-amber-300"></div>
               </div>
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex space-x-6">
+          {/* Desktop navigation */}
+          <nav className="hidden lg:flex space-x-8">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
                 href={link.href}
-                className={`inline-flex items-center px-1 pt-1 text-sm font-medium transition-colors duration-200 border-b-2 ${
-                  router.pathname === link.href ||
-                  (link.href !== "/" && router.pathname.startsWith(link.href))
+                className={`inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 ${
+                  router.pathname === link.href
                     ? "border-wine text-wine"
-                    : "border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300"
+                    : "border-transparent text-gray-600 hover:text-wine hover:border-gray-300"
                 }`}
               >
                 {link.name}
@@ -86,84 +92,70 @@ export default function Header() {
             ))}
           </nav>
 
-          {/* Right side buttons */}
-          <div className="flex items-center space-x-4">
-            {/* Search button */}
+          {/* Auth buttons for desktop */}
+          <div className="hidden lg:flex items-center space-x-4">
+            {isLoaded && isSignedIn ? (
+              <div className="flex items-center space-x-4">
+                <Link
+                  href={
+                    isAdmin
+                      ? "/dashboard/admin"
+                      : isAgent
+                        ? "/dashboard/agent"
+                        : "/dashboard"
+                  }
+                  className="text-gray-600 hover:text-wine flex items-center space-x-1"
+                >
+                  <FiUser className="mr-1" />
+                  <span>Dashboard</span>
+                </Link>
+                <UserButton afterSignOutUrl="/" />
+              </div>
+            ) : (
+              <>
+                <Link
+                  href="/auth/sign-in"
+                  className="text-gray-600 hover:text-wine"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/auth/sign-up"
+                  className="bg-wine text-white px-4 py-2 rounded hover:bg-opacity-90"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
+          </div>
+
+          {/* Mobile menu button */}
+          <div className="flex lg:hidden">
             <button
-              onClick={() => router.push("/search")}
-              className="p-1 rounded-full text-gray-500 hover:text-wine hover:bg-gray-100 focus:outline-none"
+              ref={menuButtonRef}
+              onClick={toggleMobileMenu}
+              className="inline-flex items-center justify-center p-2 rounded-md text-gray-600 hover:text-wine hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-wine"
+              aria-expanded={isMenuOpen}
             >
-              <FiSearch className="h-5 w-5" />
-            </button>
-
-            {/* Auth/Dashboard buttons */}
-            <div className="hidden md:flex items-center space-x-2">
-              {isSignedIn ? (
-                <>
-                  {/* Dashboard link - show appropriate dashboard based on role */}
-                  <Link
-                    href={
-                      isAdmin
-                        ? "/dashboard/admin"
-                        : isAgent
-                          ? "/dashboard/agent"
-                          : "/dashboard"
-                    }
-                    className="text-gray-500 hover:text-wine px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Dashboard
-                  </Link>
-                  {/* User button dropdown */}
-                  <UserButton afterSignOutUrl="/" />
-                </>
+              <span className="sr-only">
+                {isMenuOpen ? "Close menu" : "Open menu"}
+              </span>
+              {isMenuOpen ? (
+                <FiX className="block h-6 w-6" aria-hidden="true" />
               ) : (
-                <>
-                  <Link
-                    href="/sign-in"
-                    className="text-gray-700 hover:text-wine px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    href="/sign-up"
-                    className="bg-wine text-white hover:bg-wine/90 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Sign Up
-                  </Link>
-                </>
+                <FiMenu className="block h-6 w-6" aria-hidden="true" />
               )}
-            </div>
-
-            {/* Mobile menu button - simplified with direct state toggle */}
-            <div className="flex md:hidden">
-              <button
-                ref={menuButtonRef}
-                data-testid="mobile-menu-button"
-                onClick={toggleMobileMenu}
-                type="button"
-                aria-label={isMenuOpen ? "Close menu" : "Open menu"}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-wine hover:bg-gray-100 focus:outline-none"
-              >
-                {isMenuOpen ? (
-                  <FiX className="block h-6 w-6" />
-                ) : (
-                  <FiMenu className="block h-6 w-6" />
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile navigation - using React state instead of direct DOM manipulation */}
+      {/* Mobile menu */}
       <div
-        className={`md:hidden bg-white border-t border-gray-200 absolute w-full z-20 shadow-lg transition-all duration-300 ease-in-out ${
-          isMenuOpen
-            ? "opacity-100 max-h-[500px]"
-            : "opacity-0 max-h-0 overflow-hidden"
-        }`}
+        ref={mobileMenuRef}
+        className={`lg:hidden ${isMenuOpen ? "block" : "hidden"}`}
       >
-        <div className="pt-2 pb-4 space-y-1">
+        <div className="pt-2 pb-3 space-y-1 border-t">
           {navLinks.map((link) => (
             <Link
               key={link.name}
@@ -180,7 +172,7 @@ export default function Header() {
           ))}
 
           {/* Auth links for mobile */}
-          {isSignedIn ? (
+          {isLoaded && isSignedIn ? (
             <Link
               href={
                 isAdmin
@@ -199,14 +191,14 @@ export default function Header() {
           ) : (
             <>
               <Link
-                href="/sign-in"
+                href="/auth/sign-in"
                 className="block pl-3 pr-4 py-2 text-base font-medium text-gray-600 hover:bg-gray-50 hover:text-wine"
                 onClick={toggleMobileMenu}
               >
                 Sign In
               </Link>
               <Link
-                href="/sign-up"
+                href="/auth/sign-up"
                 className="block pl-3 pr-4 py-2 text-base font-medium bg-gray-50 text-wine hover:bg-gray-100"
                 onClick={toggleMobileMenu}
               >
