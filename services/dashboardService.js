@@ -19,12 +19,33 @@ export async function fetchUserDashboardData() {
       credentials: "include", // Important for auth cookies
     });
 
+    // First check if response is OK
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || "Error fetching dashboard data");
+      // Check content type to handle HTML error pages
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.error(
+          "Server returned HTML instead of JSON. Possible server error or authentication issue."
+        );
+        throw new Error("Unexpected response from server");
+      }
+
+      try {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Error fetching dashboard data");
+      } catch (jsonError) {
+        throw new Error(`Failed to fetch dashboard data: ${response.status}`);
+      }
     }
 
-    const result = await response.json();
+    // Try to parse JSON safely
+    let result;
+    try {
+      result = await response.json();
+    } catch (jsonError) {
+      console.error("Failed to parse JSON response:", jsonError);
+      throw new Error("Invalid data received from server");
+    }
 
     // Check if result has the expected structure
     const dashboardData = result.data || result;
@@ -75,15 +96,35 @@ export async function fetchUserFavorites({ limit = 10 } = {}) {
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || "Error fetching user favorites");
+      // Check content type to handle HTML error pages
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.error(
+          "Server returned HTML instead of JSON. Possible server error or authentication issue."
+        );
+        return []; // Return empty array instead of throwing
+      }
+
+      try {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Error fetching user favorites");
+      } catch (jsonError) {
+        console.error("Error parsing error response:", jsonError);
+        return []; // Return empty array on parse error
+      }
     }
 
-    const { data } = await response.json();
-    return data.favorites;
+    // Safely parse JSON
+    try {
+      const result = await response.json();
+      return result.data?.favorites || [];
+    } catch (jsonError) {
+      console.error("Failed to parse favorites JSON:", jsonError);
+      return [];
+    }
   } catch (error) {
     console.error("Favorites fetch error:", error);
-    throw error;
+    return []; // Return empty array instead of throwing
   }
 }
 
@@ -113,14 +154,34 @@ export async function fetchUserInspections({
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || "Error fetching user inspections");
+      // Check content type to handle HTML error pages
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        console.error(
+          "Server returned HTML instead of JSON. Possible server error or authentication issue."
+        );
+        return []; // Return empty array instead of throwing
+      }
+
+      try {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Error fetching user inspections");
+      } catch (jsonError) {
+        console.error("Error parsing error response:", jsonError);
+        return []; // Return empty array on parse error
+      }
     }
 
-    const { data } = await response.json();
-    return data.inspections;
+    // Safely parse JSON
+    try {
+      const result = await response.json();
+      return result.data?.inspections || [];
+    } catch (jsonError) {
+      console.error("Failed to parse inspections JSON:", jsonError);
+      return [];
+    }
   } catch (error) {
     console.error("Inspections fetch error:", error);
-    throw error;
+    return []; // Return empty array instead of throwing
   }
 }

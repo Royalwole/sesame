@@ -19,18 +19,27 @@ export default async function handler(req, res) {
   let dbConnection = false;
 
   try {
-    // Connect to database with timeout handling
-    console.log(`[${requestId}] Connecting to database`);
+    // First get Clerk authentication information
+    const auth = getAuth(req);
+
+    // If no auth user ID, return unauthorized immediately (fail fast)
+    if (!auth?.userId) {
+      console.log(`[${requestId}] No userId in auth object`);
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+        message: "Authentication required",
+        requestId,
+      });
+    }
+
+    const clerkId = auth.userId;
+    console.log(`[${requestId}] Authenticated user: ${clerkId}`);
+
+    // Try to connect to the database with a timeout
     try {
-      await Promise.race([
-        connectDB(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Database connection timeout")),
-            5000
-          )
-        ),
-      ]);
+      console.log(`[${requestId}] Connecting to database...`);
+      await connectDB();
       dbConnection = true;
       console.log(`[${requestId}] Database connected successfully`);
     } catch (dbError) {
@@ -43,179 +52,135 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get auth from Clerk using the session token from the request
-    // This approach works with our middleware setup
     try {
-      // Get the auth session from the request, using headers for API routes
-      const sessionToken =
-        req.headers.authorization?.split("Bearer ")[1] ||
-        req.cookies?.__session ||
-        req.cookies?.["__clerk_session"];
+      // Retrieve the user from Clerk
+      const clerkUser = await clerkClient.users.getUser(clerkId);
 
-      let clerkId;
-
-      // First try the middleware-applied auth
-      const auth = getAuth(req);
-      if (auth?.userId) {
-        clerkId = auth.userId;
-      }
-      // Fallback to direct verification if needed
-      else if (sessionToken) {
-        try {
-          const session =
-            await clerkClient.sessions.verifySession(sessionToken);
-          clerkId = session.userId;
-        } catch (sessionError) {
-          console.error(
-            `[${requestId}] Session verification error:`,
-            sessionError
-          );
-        }
-      }
-
-      // If we still don't have a userId, return unauthorized
-      if (!clerkId) {
-        console.log(`[${requestId}] No userId in auth object`);
-        return res.status(401).json({
+      if (!clerkUser) {
+        console.error(`[${requestId}] User not found in Clerk`);
+        return res.status(404).json({
           success: false,
-          error: "Unauthorized",
-          message: "Authentication required",
+          error: "Not found",
+          message: "User not found in authentication service",
           requestId,
         });
       }
 
-      console.log(`[${requestId}] Syncing user data for: ${clerkId}`);
+      console.log(`[${requestId}] Retrieved user from Clerk:`, {
+        id: clerkUser.id,
+        firstName: clerkUser.firstName,
+        email: clerkUser.emailAddresses[0]?.emailAddress,
+      });
 
-      // Get user profile from Clerk
-      try {
-        const clerkUser = await clerkClient.users.getUser(clerkId);
+      // Extract user data from Clerk
+      const primaryEmailObj = clerkUser.emailAddresses.find(
+        (email) => email.id === clerkUser.primaryEmailAddressId
+      );
 
-        console.log(`[${requestId}] Clerk user retrieved:`, {
-          id: clerkUser.id,
-          firstName: clerkUser.firstName,
-          lastName: clerkUser.lastName,
-          emailAddress: clerkUser.emailAddresses[0]?.emailAddress,
-        });
+      const email =
+        primaryEmailObj?.emailAddress ||
+        clerkUser.emailAddresses[0]?.emailAddress ||
+        `user-${clerkId.substring(0, 8)}@placeholder.com`;
 
-        // Check if user exists in our database
-        let user = await User.findOne({ clerkId });
+      // Attempt to find the user in our database
+      let user = await User.findOne({ clerkId });
 
-        // If user doesn't exist, create them
-        if (!user) {
-          console.log(
-            `[${requestId}] User not found in database, creating new record`
-          );
+      if (!user) {
+        console.log(
+          `[${requestId}] User not found in database, creating new record`
+        );
 
+        // Create a new user with basic data
+        try {
+          user = new User({
+            clerkId,
+            firstName: clerkUser.firstName || "User",
+            lastName: clerkUser.lastName || "",
+            email,
+            profileImage: clerkUser.imageUrl || "",
+            role: clerkUser.publicMetadata?.role || "user",
+            approved:
+              clerkUser.publicMetadata?.role === "agent"
+                ? clerkUser.publicMetadata?.approved === true
+                : true,
+          });
+
+          await user.save();
+          console.log(`[${requestId}] Created new user: ${user._id}`);
+        } catch (createError) {
+          console.error(`[${requestId}] Error creating user:`, createError);
+
+          // Return error response
+          return res.status(500).json({
+            success: false,
+            error: "Database error",
+            message: "Failed to create user record",
+            requestId,
+          });
+        }
+      } else {
+        // User exists - update fields if needed
+        let needsUpdate = false;
+
+        // Update name if changed
+        if (clerkUser.firstName && user.firstName !== clerkUser.firstName) {
+          user.firstName = clerkUser.firstName;
+          needsUpdate = true;
+        }
+
+        if (clerkUser.lastName && user.lastName !== clerkUser.lastName) {
+          user.lastName = clerkUser.lastName;
+          needsUpdate = true;
+        }
+
+        // Update email if it changed
+        if (email && user.email !== email) {
+          user.email = email;
+          needsUpdate = true;
+        }
+
+        // Update profile image if it changed
+        if (clerkUser.imageUrl && user.profileImage !== clerkUser.imageUrl) {
+          user.profileImage = clerkUser.imageUrl;
+          needsUpdate = true;
+        }
+
+        // Save changes if needed
+        if (needsUpdate) {
           try {
-            // Extract primary email or use the first available one
-            const primaryEmail =
-              clerkUser.emailAddresses.find(
-                (email) => email.id === clerkUser.primaryEmailAddressId
-              )?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress;
-
-            // Create user with data from Clerk
-            user = new User({
-              clerkId,
-              firstName: clerkUser.firstName || "",
-              lastName: clerkUser.lastName || "",
-              email: primaryEmail || "",
-              profileImage: clerkUser.imageUrl || "",
-              role: clerkUser.publicMetadata?.role || "user", // Use role from Clerk if available
-              approved: true, // Regular users are approved by default
-            });
-
-            await user.save();
-            console.log(`[${requestId}] Created new user: ${user._id}`);
-          } catch (validationError) {
-            console.error(`[${requestId}] Validation error:`, validationError);
-
-            // Try with minimal fields as a fallback
-            user = new User({
-              clerkId,
-              firstName: "User",
-              lastName: clerkId.substring(0, 8),
-              email:
-                clerkUser.emailAddresses[0]?.emailAddress ||
-                `user-${clerkId.substring(0, 6)}@example.com`,
-            });
-
-            await user.save();
-            console.log(
-              `[${requestId}] Created user with fallback data: ${user._id}`
-            );
-          }
-        } else {
-          // User exists, update their data if needed to keep in sync with Clerk
-          let needsUpdate = false;
-
-          // Update name if it changed in Clerk
-          if (clerkUser.firstName && user.firstName !== clerkUser.firstName) {
-            user.firstName = clerkUser.firstName;
-            needsUpdate = true;
-          }
-
-          if (clerkUser.lastName && user.lastName !== clerkUser.lastName) {
-            user.lastName = clerkUser.lastName;
-            needsUpdate = true;
-          }
-
-          // Update email if it changed in Clerk
-          const primaryEmail = clerkUser.emailAddresses.find(
-            (email) => email.id === clerkUser.primaryEmailAddressId
-          )?.emailAddress;
-
-          if (primaryEmail && user.email !== primaryEmail) {
-            user.email = primaryEmail;
-            needsUpdate = true;
-          }
-
-          // Update profile image if it changed
-          if (clerkUser.imageUrl && user.profileImage !== clerkUser.imageUrl) {
-            user.profileImage = clerkUser.imageUrl;
-            needsUpdate = true;
-          }
-
-          // Save changes if needed
-          if (needsUpdate) {
             await user.save();
             console.log(`[${requestId}] Updated user data from Clerk`);
+          } catch (updateError) {
+            console.error(`[${requestId}] Error updating user:`, updateError);
           }
         }
-
-        // Return user data
-        return res.status(200).json({
-          success: true,
-          requestId,
-          user: {
-            _id: user._id,
-            clerkId: user.clerkId,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            role: user.role,
-            approved: user.approved,
-            profileImage: user.profileImage,
-            bio: user.bio,
-            agentDetails: user.agentDetails,
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt,
-          },
-        });
-      } catch (clerkError) {
-        console.error(`[${requestId}] Clerk API error:`, clerkError);
-        return res.status(500).json({
-          success: false,
-          error: "Service error",
-          message: "Could not retrieve user data from authentication service",
-          requestId,
-        });
       }
-    } catch (authError) {
-      console.error(`[${requestId}] Authentication error:`, authError);
-      return res.status(401).json({
+
+      // Return user data
+      return res.status(200).json({
+        success: true,
+        requestId,
+        user: {
+          _id: user._id,
+          clerkId: user.clerkId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          role: user.role,
+          approved: user.approved,
+          profileImage: user.profileImage,
+          bio: user.bio || "",
+          phone: user.phone || "",
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+        },
+      });
+    } catch (clerkError) {
+      console.error(`[${requestId}] Error with Clerk API:`, clerkError);
+      return res.status(500).json({
         success: false,
-        error: "Authentication failed",
-        message: "Could not verify authentication credentials",
+        error: "Service error",
+        message: "Failed to retrieve or process authentication data",
         requestId,
       });
     }
@@ -228,12 +193,13 @@ export default async function handler(req, res) {
       requestId,
     });
   } finally {
+    // Always disconnect from DB if we connected
     if (dbConnection) {
       try {
         await disconnectDB();
         console.log(`[${requestId}] Database connection closed`);
-      } catch (error) {
-        console.error(`[${requestId}] Error closing database:`, error);
+      } catch (closeError) {
+        console.error(`[${requestId}] Error closing database:`, closeError);
       }
     }
   }

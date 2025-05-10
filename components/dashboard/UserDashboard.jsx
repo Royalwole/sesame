@@ -29,12 +29,40 @@ export default function UserDashboard() {
         const fetchData = async () => {
             try {
                 setIsLoading(true);
-                const data = await fetchUserDashboardData();
-                setDashboardData(data);
-                const favorites = await fetchUserFavorites({ limit: 6 });
-                setSavedListings(favorites || []);
-                const inspections = await fetchUserInspections({ limit: 5, futureOnly: true });
-                setUpcomingInspections(inspections || []);
+                // Wrap each fetch in try-catch to prevent one failure from stopping all data loading
+                try {
+                    const data = await fetchUserDashboardData();
+                    setDashboardData(data);
+                } catch (dashboardError) {
+                    console.error("Dashboard data fetch error:", dashboardError);
+                    setDashboardData({
+                        stats: {
+                            savedListings: 0,
+                            viewedListings: 0,
+                            upcomingInspections: 0,
+                            recentSearches: 0,
+                            matches: 0,
+                            notifications: 0
+                        }
+                    });
+                }
+                
+                try {
+                    const favorites = await fetchUserFavorites({ limit: 6 });
+                    setSavedListings(favorites || []);
+                } catch (favoritesError) {
+                    console.error("Favorites fetch error:", favoritesError);
+                    setSavedListings([]);
+                }
+                
+                try {
+                    const inspections = await fetchUserInspections({ limit: 5, futureOnly: true });
+                    setUpcomingInspections(inspections || []);
+                } catch (inspectionsError) {
+                    console.error("Inspections fetch error:", inspectionsError);
+                    setUpcomingInspections([]);
+                }
+                
                 setIsLoading(false);
             } catch (error) {
                 console.error("Error loading dashboard data:", error);

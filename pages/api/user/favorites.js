@@ -2,7 +2,7 @@ import { connectDB, disconnectDB } from "../../../lib/db";
 import { requireAuth } from "../../../middlewares/authMiddleware";
 
 /**
- * API handler to fetch basic dashboard data for the user
+ * API handler to fetch user's favorite listings
  */
 async function handler(req, res) {
   if (req.method !== "GET") {
@@ -15,36 +15,27 @@ async function handler(req, res) {
   let dbConnection = false;
 
   try {
-    // Log authentication info for debugging
-    console.log("Dashboard API - Auth:", req.auth);
+    // Log auth info for debugging
+    console.log("Favorites API - Auth:", req.auth);
 
     // Connect to database first
     await connectDB();
     dbConnection = true;
 
-    // Return basic dashboard stats
-    // This simplified version returns empty data that won't cause errors
+    // Return empty favorites list (simplified version)
+    // This prevents errors while you're debugging the real functionality
     return res.status(200).json({
       success: true,
       data: {
         favorites: [],
-        inspections: [],
-        stats: {
-          savedListings: 0,
-          viewedListings: 0,
-          upcomingInspections: 0,
-          recentSearches: 0,
-          matches: 0,
-          notifications: 0,
-        },
       },
     });
   } catch (error) {
-    console.error("Dashboard data fetch error:", error);
+    console.error("Favorites fetch error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Error fetching dashboard data",
+      message: "Error fetching user favorites",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   } finally {

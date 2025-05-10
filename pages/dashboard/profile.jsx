@@ -32,6 +32,28 @@ function ProfilePage() {
     }
   }, [dbUser]);
 
+  // Ensure user profile exists in the database
+  useEffect(() => {
+    async function ensureProfileExists() {
+      try {
+        // Only make the API call if there seems to be an issue with the user data
+        if (!dbUser || isLoading) {
+          console.log("Fixing user profile to ensure it exists in database...");
+          const response = await fetch('/api/users/fix-profile');
+          if (response.ok) {
+            console.log("Profile fix completed successfully");
+            // Refresh user data
+            syncUserData(true);
+          }
+        }
+      } catch (error) {
+        console.error("Error ensuring profile exists:", error);
+      }
+    }
+    
+    ensureProfileExists();
+  }, [dbUser, isLoading, syncUserData]);
+
   // Handle form input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -47,13 +69,19 @@ function ProfilePage() {
     e.preventDefault();
     setIsSaving(true);
 
+    // Make sure email is included in the submission even if the field is disabled
+    const dataToSubmit = {
+      ...formData,
+      email: formData.email || dbUser?.email // Ensure email is always included
+    };
+
     try {
       const response = await fetch("/api/users/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(dataToSubmit),
       });
 
       if (!response.ok) {

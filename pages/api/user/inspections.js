@@ -2,7 +2,7 @@ import { connectDB, disconnectDB } from "../../../lib/db";
 import { requireAuth } from "../../../middlewares/authMiddleware";
 
 /**
- * API handler to fetch basic dashboard data for the user
+ * API handler to fetch user's inspection appointments
  */
 async function handler(req, res) {
   if (req.method !== "GET") {
@@ -15,36 +15,35 @@ async function handler(req, res) {
   let dbConnection = false;
 
   try {
-    // Log authentication info for debugging
-    console.log("Dashboard API - Auth:", req.auth);
+    // Log auth info for debugging
+    console.log("Inspections API - Auth:", req.auth);
+
+    // Parse query parameters
+    const limit = parseInt(req.query.limit) || 5;
+    const futureOnly = req.query.futureOnly === "true";
+
+    console.log(
+      `Inspections API - Params: limit=${limit}, futureOnly=${futureOnly}`
+    );
 
     // Connect to database first
     await connectDB();
     dbConnection = true;
 
-    // Return basic dashboard stats
-    // This simplified version returns empty data that won't cause errors
+    // Return empty inspections list (simplified version)
+    // This prevents errors while you're debugging the real functionality
     return res.status(200).json({
       success: true,
       data: {
-        favorites: [],
         inspections: [],
-        stats: {
-          savedListings: 0,
-          viewedListings: 0,
-          upcomingInspections: 0,
-          recentSearches: 0,
-          matches: 0,
-          notifications: 0,
-        },
       },
     });
   } catch (error) {
-    console.error("Dashboard data fetch error:", error);
+    console.error("Inspections fetch error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Error fetching dashboard data",
+      message: "Error fetching user inspections",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   } finally {
