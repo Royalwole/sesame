@@ -2,6 +2,7 @@ import { connectDB, disconnectDB } from "../../../lib/db";
 import User from "../../../models/User";
 import { getAuth } from "@clerk/nextjs/server";
 import { getUser, createFallbackUserData } from "../../../lib/clerk-api";
+import { ROLES } from "../../../lib/role-management";
 
 export default async function handler(req, res) {
   // Track request for debugging
@@ -120,12 +121,19 @@ export default async function handler(req, res) {
         clerkUser.emailAddresses[0]?.emailAddress ||
         `user-${clerkId.substring(0, 8)}@placeholder.com`;
 
+      // Extract role information from Clerk metadata
+      const clerkRole = clerkUser.publicMetadata?.role || ROLES.USER;
+      const clerkApproved = clerkUser.publicMetadata?.approved === true;
+      console.log(
+        `[${requestId}] Clerk role data: role=${clerkRole}, approved=${clerkApproved}`
+      );
+
       // Attempt to find the user in our database
       let user = await User.findOne({ clerkId });
 
       if (!user) {
         console.log(
-          `[${requestId}] User not found in database, creating new record`
+          `[${requestId}] User not found in database, creating new record with role: ${clerkRole}`
         );
 
         // Create a new user with basic data
@@ -136,15 +144,14 @@ export default async function handler(req, res) {
             lastName: clerkUser.lastName || "",
             email,
             profileImage: clerkUser.imageUrl || "",
-            role: clerkUser.publicMetadata?.role || "user",
-            approved:
-              clerkUser.publicMetadata?.role === "agent"
-                ? clerkUser.publicMetadata?.approved === true
-                : true,
+            role: clerkRole,
+            approved: clerkRole === ROLES.AGENT ? clerkApproved : true,
           });
 
           await user.save();
-          console.log(`[${requestId}] Created new user: ${user._id}`);
+          console.log(
+            `[${requestId}] Created new user: ${user._id} with role: ${user.role}`
+          );
         } catch (createError) {
           console.error(`[${requestId}] Error creating user:`, createError);
 
@@ -183,14 +190,38 @@ export default async function handler(req, res) {
           needsUpdate = true;
         }
 
+        // CRITICAL FIX: Always check and update role from Clerk during sync
+        if (clerkRole && user.role !== clerkRole) {
+          console.log(
+            `[${requestId}] Updating role from ${user.role} to ${clerkRole}`
+          );
+          user.role = clerkRole;
+          needsUpdate = true;
+        }
+
+        // Update approval status for agent roles
+        if (clerkRole === ROLES.AGENT && user.approved !== clerkApproved) {
+          console.log(
+            `[${requestId}] Updating approval status from ${user.approved} to ${clerkApproved}`
+          );
+          user.approved = clerkApproved;
+          needsUpdate = true;
+        }
+
         // Save changes if needed
         if (needsUpdate) {
           try {
             await user.save();
-            console.log(`[${requestId}] Updated user data from Clerk`);
+            console.log(
+              `[${requestId}] Updated user data from Clerk, role is now: ${user.role}`
+            );
           } catch (updateError) {
             console.error(`[${requestId}] Error updating user:`, updateError);
           }
+        } else {
+          console.log(
+            `[${requestId}] No updates needed, current role: ${user.role}`
+          );
         }
       }
 

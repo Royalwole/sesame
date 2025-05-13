@@ -75,3 +75,19 @@ export default async function handler(req, res) {
     }
   }
 }
+
+// Debug endpoint to check auth status
+export function debugHandler(req, res) {
+  const { userId, sessionId, session } = getAuth(req);
+
+  res.status(200).json({
+    authenticated: !!userId,
+    userId,
+    sessionId,
+    sessionClaims: session?.claims || null,
+    headers: {
+      authorization: req.headers.authorization ? "Present" : "Missing",
+      cookie: req.headers.cookie ? "Present" : "Missing",
+    },
+  });
+}

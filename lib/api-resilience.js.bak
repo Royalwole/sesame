@@ -1,0 +1,177 @@
+﻿/**
+ * API Resilience utilities to prevent API failures from causing authentication loops
+ */
+
+// Default fallback values for common API responses
+const FALLBACKS = {
+  // User profile fallback
+  profile: {
+    _id: "fallback_user",
+    clerkId: "unknown",
+    firstName: "User",
+    lastName: "",
+    email: "",
+    role: "user", // Always default to regular user role
+    approved: false,
+    isEmergencyFallback: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+
+  // Dashboard data fallback
+  dashboard: {
+    stats: {
+      savedListings: 0,
+      viewedListings: 0,
+      upcomingInspections: 0,
+      recentSearches: 0,
+      matches: 0,
+      notifications: 0,
+    },
+    isEmergencyFallback: true,
+  },
+
+  // Empty array fallback for collections
+  emptyArray: [],
+};
+
+/**
+ * Wrapper for fetch that handles errors gracefully
+ * Returns fallback data instead of throwing errors to prevent auth loops
+ *
+ * @param {string} url - The URL to fetch
+ * @param {Object} options - Fetch options
+ * @param {any} fallbackData - Data to return if fetch fails
+ * @returns {Promise<any>} - The response data or fallback
+ */
+export async function resilientFetch(url, options = {}, fallbackData = null) {
+  try {
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+    const fetchOptions = {
+      ...options,
+      signal: controller.signal,
+      credentials: "include", // Ensure cookies are sent
+    };
+
+    // Attempt the fetch
+    const response = await fetch(url, fetchOptions);
+    clearTimeout(id);
+
+    // Handle non-JSON responses gracefully
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      console.warn(`Non-JSON response from ${url}: ${contentType}`);
+      return fallbackData;
+    }
+
+    // Parse JSON response
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error(`JSON parse error from ${url}:`, parseError);
+      return fallbackData;
+    }
+
+    // Even if status is not OK, return the data if present to prevent undefined errors
+    if (!response.ok) {
+      console.warn(`API error ${response.status} from ${url}`);
+      return data.data || fallbackData;
+    }
+
+    // Return successful data
+    return data.data || data;
+  } catch (error) {
+    console.error(`Fetch error for ${url}:`, error);
+    return fallbackData;
+  }
+}
+
+/**
+ * Resilient user profile fetch - never throws, always returns usable data
+ */
+export async function fetchUserProfile() {
+  return resilientFetch("/api/users/profile", {}, FALLBACKS.profile);
+}
+
+/**
+ * Resilient dashboard data fetch - never throws, always returns usable data
+ */
+export async function fetchDashboardData() {
+  return resilientFetch("/api/user/dashboard", {}, FALLBACKS.dashboard);
+}
+
+/**
+ * Resilient favorites fetch - never throws, always returns an array
+ */
+export async function fetchFavorites(limit = 6) {
+  const result = await resilientFetch(
+    `/api/user/favorites?limit=${limit}`,
+    {},
+    { favorites: [] }
+  );
+  // Handle different response structures
+  if (Array.isArray(result)) {
+    return result;
+  } else if (result && Array.isArray(result.favorites)) {
+    return result.favorites;
+  }
+  return [];
+}
+
+/**
+ * Resilient inspections fetch - never throws, always returns an array
+ */
+export async function fetchInspections(limit = 5, futureOnly = true) {
+  const result = await resilientFetch(
+    `/api/user/inspections?limit=${limit}&futureOnly=${futureOnly}`,
+    {},
+    { inspections: [] }
+  );
+
+  // Handle different response structures
+  if (Array.isArray(result)) {
+    return result;
+  } else if (result && Array.isArray(result.inspections)) {
+    return result.inspections;
+  }
+  return [];
+}
+
+/**
+ * Utility to make any API request resilient to failures
+ * @param {Function} apiCall - The API call function
+ * @param {any} fallbackData - Data to return if the call fails
+ * @returns {Promise<any>} - The result or fallback data
+ */
+export async function makeResilient(apiCall, fallbackData = null) {
+  try {
+    const result = await apiCall();
+    return result || fallbackData;
+  } catch (error) {
+    console.error("API call failed, using fallback:", error);
+    return fallbackData;
+  }
+}
+
+/**
+ * API availability checker - returns true if APIs seem to be working
+ * Use this to display offline indicators in the UI
+ */
+export async function checkApiAvailability() {
+  try {
+    const response = await fetch("/api/health?t=" + Date.now(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.warn("API health check failed:", error);
+    return false;
+  }
+}

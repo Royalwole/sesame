@@ -4,6 +4,10 @@ import { connectDB, disconnectDB } from "../../../lib/db";
 import User from "../../../models/User";
 import { clerkClient } from "@clerk/nextjs";
 import { ROLES } from "../../../lib/role-management";
+import { syncRoleToDatabase } from "../../../lib/clerk-role-management";
+import { webhookRateLimiter } from "../../../lib/api-rate-limiter";
+import { logger } from "../../../lib/error-logger";
+import { clearUserPermissionCache } from "../../../lib/permissions-manager";
 
 // Disable body parsing, we'll do it ourselves with svix
 export const config = {
@@ -13,76 +17,125 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // Get the signature from the header
-  const svix_id = req.headers["svix-id"];
-  const svix_timestamp = req.headers["svix-timestamp"];
-  const svix_signature = req.headers["svix-signature"];
+  // Apply rate limiting
+  // Note: For webhooks we'll use a higher limit but still protect against abuse
+  if (!webhookRateLimiter(req, res)) {
+    logger.warn("Webhook rate limit exceeded", {
+      ip: req.ip || req.headers["x-forwarded-for"] || "unknown",
+      headers: req.headers,
+    });
+    return; // Response already sent by the rate limiter
+  }
 
-  // If there's no signature, this isn't a Svix request
-  if (!svix_id || !svix_timestamp || !svix_signature) {
-    return res.status(400).json({ error: "Missing Svix headers" });
+  // Get the signature from the headers
+  const svixId = req.headers["svix-id"];
+  const svixTimestamp = req.headers["svix-timestamp"];
+  const svixSignature = req.headers["svix-signature"];
+
+  // Validate required headers
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    logger.error("Missing svix headers", {
+      svixId: !!svixId,
+      svixTimestamp: !!svixTimestamp,
+      svixSignature: !!svixSignature,
+    });
+    return res.status(401).json({ error: "Missing required headers" });
+  }
+
+  // Get the webhook secret from environment variable
+  const webhookSecret =
+    process.env.CLERK_WEBHOOK_SECRET || process.env.SIGNING_SECRET;
+  if (!webhookSecret) {
+    logger.error("Webhook secret not found in environment variables");
+    return res.status(500).json({ error: "Server configuration error" });
   }
 
   // Get the raw body
-  const payload = await buffer(req);
-  const body = JSON.parse(payload);
-  const eventType = body.type;
+  let rawBody;
+  try {
+    rawBody = await buffer(req);
+  } catch (error) {
+    logger.error("Failed to read request body", { error: error.message });
+    return res.status(400).json({ error: "Invalid request body" });
+  }
 
-  console.log(`Webhook received: ${eventType}`);
+  // Initialize the Webhook instance with the secret
+  const wh = new Webhook(webhookSecret);
+  let payload;
 
   try {
-    // Verify webhook signature using Svix
-    // In production, get the webhook secret from environment variables
-    const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
+    // Verify with all headers for best security
+    payload = wh.verify(rawBody.toString(), {
+      "svix-id": svixId,
+      "svix-timestamp": svixTimestamp,
+      "svix-signature": svixSignature,
+    });
+  } catch (err) {
+    logger.error("Webhook verification failed", {
+      error: err.message,
+      type: err.constructor.name,
+    });
+    return res.status(401).json({
+      error: "Invalid signature",
+      message: "The webhook signature verification failed",
+    });
+  }
 
-    if (webhookSecret) {
-      const wh = new Webhook(webhookSecret);
-      const headers = {
-        "svix-id": svix_id,
-        "svix-timestamp": svix_timestamp,
-        "svix-signature": svix_signature,
-      };
+  // Handle different webhook events
+  const { type, data: userData } = payload;
 
-      // This will throw an error if verification fails
-      wh.verify(payload, headers);
-    } else {
-      console.warn(
-        "⚠️ Clerk webhook secret not found - skipping signature verification"
-      );
-    }
+  try {
+    // Log the webhook event
+    logger.info(`Processing Clerk webhook: ${type}`, {
+      userId: userData?.id,
+      event: type,
+    });
 
-    // Handle events based on type
-    switch (eventType) {
+    switch (type) {
       case "user.created":
-        console.log(`Creating new user in database: ${body.data.id}`);
-        await handleUserCreated(body.data);
+        await handleUserCreated(userData);
         break;
-
       case "user.updated":
-        console.log(`Updating user in database: ${body.data.id}`);
-        await handleUserUpdated(body.data);
+        await handleUserUpdated(userData);
         break;
-
+      case "user.deleted":
+        await handleUserDeleted(userData);
+        break;
+      // Add more event types as needed
       default:
-        console.log(`Ignoring unhandled webhook event: ${eventType}`);
+        logger.info(`Unhandled webhook event: ${type}`);
     }
 
-    return res.status(200).json({ success: true, event: eventType });
+    return res.status(200).json({ success: true, event: type });
   } catch (error) {
-    console.error(`Webhook error for ${eventType}:`, error);
-    return res.status(400).json({ error: error.message });
+    logger.error(`Error processing webhook ${type}`, {
+      error: error.message,
+      stack: error.stack,
+      userId: userData?.id,
+    });
+    return res.status(500).json({
+      error: "Webhook processing failed",
+      message: "An error occurred while processing the webhook",
+    });
   } finally {
-    await disconnectDB();
+    // Ensure database connection is closed
+    try {
+      await disconnectDB();
+    } catch (err) {
+      // Just log, don't affect the response
+      logger.error("Error disconnecting from database", { error: err.message });
+    }
   }
 }
 
 /**
  * Handle user.created webhook event
- * Creates a new user in the database and ensures default role is set
+ * Creates a new user in the database and uses Clerk metadata as the source of truth for roles
  * @param {Object} userData - User data from Clerk
  */
 async function handleUserCreated(userData) {
@@ -91,7 +144,7 @@ async function handleUserCreated(userData) {
   // Check if user already exists (should be rare, but handle it)
   const existingUser = await User.findOne({ clerkId: userData.id });
   if (existingUser) {
-    console.log(`User ${userData.id} already exists in database`);
+    logger.info(`User ${userData.id} already exists in database`);
     return;
   }
 
@@ -109,7 +162,7 @@ async function handleUserCreated(userData) {
   const role = metadata.role || ROLES.USER;
 
   // For agents, check approval status (default approved for users)
-  const approved = role === ROLES.AGENT ? metadata.approved === true : true;
+  const approved = metadata.approved === true || role !== ROLES.AGENT;
 
   // Create new user in MongoDB
   const user = new User({
@@ -120,10 +173,16 @@ async function handleUserCreated(userData) {
     profileImage: userData.image_url || "",
     role: role,
     approved: approved,
+    createdAt: new Date(),
+    updatedAt: new Date(),
   });
 
   await user.save();
-  console.log(`User created in database: ${user._id} with role ${role}`);
+  logger.info(`User created in database`, {
+    userId: userData.id,
+    role: role,
+    approved: approved,
+  });
 
   // Ensure the user has role in Clerk metadata if not already set
   if (!metadata.role) {
@@ -133,85 +192,151 @@ async function handleUserCreated(userData) {
           ...metadata,
           role: ROLES.USER,
           approved: true,
+          lastUpdated: new Date().toISOString(),
         },
       });
-      console.log(`Default role set in Clerk for user ${userData.id}`);
-    } catch (err) {
-      console.error(`Failed to set default role in Clerk: ${err.message}`);
+      logger.info(`Set default role for new user ${userData.id}`);
+    } catch (error) {
+      logger.error("Failed to update user metadata", {
+        userId: userData.id,
+        error: error.message,
+      });
+      // Continue anyway - the user is created, and we can fix metadata later
     }
   }
+
+  // Clear permission cache for the new user
+  clearUserPermissionCache(userData.id);
 }
 
 /**
  * Handle user.updated webhook event
- * Updates user data in MongoDB to match Clerk
+ * Updates user data in MongoDB based on Clerk, treating Clerk as source of truth for role
  * @param {Object} userData - User data from Clerk
  */
 async function handleUserUpdated(userData) {
   await connectDB();
 
-  // Find user in database
-  const user = await User.findOne({ clerkId: userData.id });
-
-  // If user doesn't exist, create it
-  if (!user) {
-    console.log(
-      `User ${userData.id} not found in database, creating new record`
-    );
+  // Find the user in our database
+  const dbUser = await User.findOne({ clerkId: userData.id });
+  if (!dbUser) {
+    logger.info(`User ${userData.id} not found in database, creating now`);
     return await handleUserCreated(userData);
   }
 
-  // Extract metadata and role information
+  // Extract updated metadata and email
   const metadata = userData.public_metadata || {};
-  const clerkRole = metadata.role;
-  const clerkApproved = metadata.approved === true;
-
-  let needsUpdate = false;
-
-  // Update basic user information
-  if (userData.first_name && user.firstName !== userData.first_name) {
-    user.firstName = userData.first_name;
-    needsUpdate = true;
-  }
-
-  if (userData.last_name && user.lastName !== userData.last_name) {
-    user.lastName = userData.last_name;
-    needsUpdate = true;
-  }
-
-  // Update email if primary changed
   const primaryEmailObj = userData.email_addresses.find(
     (email) => email.id === userData.primary_email_address_id
   );
+  const email =
+    primaryEmailObj?.email_address ||
+    userData.email_addresses[0]?.email_address ||
+    "";
 
-  if (primaryEmailObj && primaryEmailObj.email_address !== user.email) {
-    user.email = primaryEmailObj.email_address;
-    needsUpdate = true;
+  // Store old values to detect changes
+  const oldRole = dbUser.role;
+  const oldApproved = dbUser.approved;
+
+  // Update basic user information
+  dbUser.firstName = userData.first_name || dbUser.firstName;
+  dbUser.lastName = userData.last_name || dbUser.lastName;
+  dbUser.email = email || dbUser.email;
+  dbUser.profileImage = userData.image_url || dbUser.profileImage;
+  dbUser.updatedAt = new Date();
+
+  // Detect if role was changed
+  let roleChanged = false;
+
+  // Update role and approval status from Clerk metadata (source of truth)
+  if (metadata.role && dbUser.role !== metadata.role) {
+    logger.info(`Updating user role via webhook`, {
+      userId: userData.id,
+      oldRole: dbUser.role,
+      newRole: metadata.role,
+    });
+
+    dbUser.role = metadata.role;
+    roleChanged = true;
+
+    // Record the change in the user document
+    dbUser.lastRoleChange = {
+      previousRole: oldRole,
+      newRole: metadata.role,
+      timestamp: new Date(),
+      changedBy: "clerk-webhook",
+      reason: "Role updated via Clerk",
+    };
   }
 
-  // Update profile image if changed
-  if (userData.image_url && user.profileImage !== userData.image_url) {
-    user.profileImage = userData.image_url;
-    needsUpdate = true;
+  // Update approval status
+  let approvalChanged = false;
+  if (
+    dbUser.role === ROLES.AGENT &&
+    dbUser.approved !== (metadata.approved === true)
+  ) {
+    dbUser.approved = metadata.approved === true;
+    approvalChanged = true;
+
+    logger.info(`Agent approval status changed via webhook`, {
+      userId: userData.id,
+      approved: dbUser.approved,
+    });
+  } else if (dbUser.role !== ROLES.AGENT && !dbUser.approved) {
+    // Non-agent roles are always approved
+    dbUser.approved = true;
+    approvalChanged = true;
   }
 
-  // Synchronize role if it exists in Clerk metadata
-  if (clerkRole && user.role !== clerkRole) {
-    console.log(`Updating role from ${user.role} to ${clerkRole}`);
-    user.role = clerkRole;
-    needsUpdate = true;
+  // Save the changes
+  await dbUser.save();
+
+  // Clear permission cache if role or approval status changed
+  if (roleChanged || approvalChanged) {
+    logger.info(`Clearing permission cache after role/approval change`, {
+      userId: userData.id,
+      roleChanged,
+      approvalChanged,
+    });
+
+    clearUserPermissionCache(userData.id);
   }
 
-  // Synchronize approval status for agents
-  if (user.role === ROLES.AGENT && user.approved !== clerkApproved) {
-    user.approved = clerkApproved;
-    needsUpdate = true;
-  }
+  logger.info(`User updated in database via webhook`, {
+    userId: userData.id,
+    roleChanged,
+    approvalChanged,
+  });
+}
 
-  if (needsUpdate) {
-    await user.save();
-    console.log(`User updated in database: ${user._id}`);
+/**
+ * Handle user.deleted webhook event
+ * @param {Object} userData - User data from Clerk
+ */
+async function handleUserDeleted(userData) {
+  await connectDB();
+
+  // Soft-delete the user from our database
+  const result = await User.updateOne(
+    { clerkId: userData.id },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+      },
+    }
+  );
+
+  if (result.modifiedCount > 0) {
+    logger.info(`User marked as deleted in database`, {
+      userId: userData.id,
+    });
+
+    // Clear the permission cache for the deleted user
+    clearUserPermissionCache(userData.id);
   } else {
-    console.log(`No changes needed for user ${user._id}`);
+    logger.info(`User not found for deletion`, {
+      userId: userData.id,
+    });
   }
 }

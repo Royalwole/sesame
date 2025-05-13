@@ -4,6 +4,8 @@ import { connectDB, disconnectDB } from "../../../../lib/db";
 import User from "../../../../models/User";
 import { ROLES, canChangeRole } from "../../../../lib/role-management";
 import { clerkClient } from "@clerk/nextjs/server";
+import { clearUserPermissionCache } from "../../../../lib/permissions-manager";
+import { logger } from "../../../../lib/error-logger";
 
 /**
  * API endpoint for managing user roles
@@ -78,12 +80,20 @@ async function handler(req, res) {
     const previousRole = dbUser.role;
     const previousApproved = dbUser.approved;
 
-    // Check if the role transition is allowed
-    if (!canChangeRole(previousRole, role)) {
+    // Check if the role transition is allowed using the enhanced transition system
+    const transitionCheck = canChangeRole(previousRole, role, {
+      adminUser: req.user,
+      logRejection: true,
+    });
+
+    if (!transitionCheck.allowed) {
       return res.status(400).json({
         success: false,
         error: "Invalid role transition",
-        message: `Cannot change role from ${previousRole} to ${role}`,
+        message:
+          transitionCheck.reason ||
+          `Cannot change role from ${previousRole} to ${role}`,
+        requiredRole: transitionCheck.requiredRole,
       });
     }
 
@@ -96,14 +106,25 @@ async function handler(req, res) {
     } else if (role === ROLES.AGENT_PENDING) {
       // Pending agents are always unapproved
       newApproved = false;
-    } else if (role === ROLES.USER || role === ROLES.ADMIN) {
-      // Regular users and admins are always "approved" (field is irrelevant)
+    } else if (role !== ROLES.AGENT) {
+      // Non-agent roles are always "approved" (field is irrelevant)
       newApproved = true;
     }
 
     // Update user in database
     dbUser.role = role;
     dbUser.approved = newApproved;
+    dbUser.updatedAt = new Date();
+
+    // Track role change history
+    dbUser.lastRoleChange = {
+      previousRole,
+      newRole: role,
+      timestamp: new Date(),
+      changedBy: req.user?.clerkId || "unknown-admin",
+      reason,
+    };
+
     await dbUser.save();
 
     // Sync with Clerk's public metadata
@@ -111,6 +132,11 @@ async function handler(req, res) {
       publicMetadata: {
         role: role,
         approved: newApproved,
+        lastRoleChange: {
+          previousRole,
+          timestamp: new Date().toISOString(),
+          reason,
+        },
       },
     });
 
@@ -119,11 +145,19 @@ async function handler(req, res) {
     const approvalChanged = previousApproved !== newApproved;
     const somethingChanged = roleChanged || approvalChanged;
 
-    // Log the role change for auditing
+    // Clear the user's permission cache if role or approval status changed
     if (somethingChanged) {
-      console.log(
-        `[ROLE CHANGE] User ${userId}: ${previousRole}${previousApproved ? "(approved)" : ""} -> ${role}${newApproved ? "(approved)" : ""}. Reason: ${reason}`
-      );
+      clearUserPermissionCache(userId);
+
+      logger.info(`Role changed via API`, {
+        userId,
+        adminId: req.user?.clerkId,
+        previousRole,
+        newRole: role,
+        previousApproved,
+        newApproved,
+        reason,
+      });
     }
 
     // Return appropriate response
@@ -149,9 +183,16 @@ async function handler(req, res) {
         role: dbUser.role,
         approved: dbUser.approved,
       },
+      permissionsCacheCleared: somethingChanged,
     });
   } catch (error) {
-    console.error("Role update error:", error);
+    logger.error("Role update error:", {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      requestedRole: role,
+    });
+
     return res.status(500).json({
       success: false,
       error: "Server error",
@@ -160,7 +201,13 @@ async function handler(req, res) {
   } finally {
     // Close database connection if it was opened
     if (dbConnection) {
-      await disconnectDB();
+      try {
+        await disconnectDB();
+      } catch (err) {
+        logger.error("Error disconnecting from database", {
+          error: err.message,
+        });
+      }
     }
   }
 }

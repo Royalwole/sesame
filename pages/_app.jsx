@@ -12,6 +12,9 @@ import Head from "next/head";
 import NextNProgress from "nextjs-progressbar";
 import dynamic from 'next/dynamic';
 import { useHydration } from "../lib/useHydration";
+// Temporarily removing ChakraProvider to isolate the issue
+// import { ChakraProvider } from '@chakra-ui/react';
+// import theme from '../lib/chakra-theme';
 
 // Import monitoring conditionally to avoid build errors
 const initMonitoring = () => {
@@ -143,6 +146,7 @@ function MyApp({ Component, pageProps }) {
 
         <DatabaseProvider>
           <AuthProvider>
+            {/* Removed ChakraProvider temporarily */}
             <div className="flex min-h-screen flex-col">
               <NextNProgress />
               <Toaster position="top-right" />

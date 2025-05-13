@@ -1,5 +1,5 @@
 import { connectDB, disconnectDB } from "../../../lib/db";
-import { requireAuth } from "../../../middlewares/authMiddleware";
+import { requireClerkUser } from "../../../middlewares/authMiddleware";
 
 /**
  * API handler to fetch basic dashboard data for the user
@@ -15,9 +15,6 @@ async function handler(req, res) {
   let dbConnection = false;
 
   try {
-    // Log authentication info for debugging
-    console.log("Dashboard API - Auth:", req.auth);
-
     // Connect to database first
     await connectDB();
     dbConnection = true;
@@ -59,5 +56,5 @@ async function handler(req, res) {
   }
 }
 
-// Use basic auth middleware
-export default requireAuth(handler);
+// Use more robust auth middleware
+export default requireClerkUser(handler);

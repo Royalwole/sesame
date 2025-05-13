@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { withAuth } from "../../../lib/withAuth";
+import { useRouter } from "next/router";
+import { useAuth } from "../../../contexts/AuthContext";
+import {
+  withAuth,
+  withServerAuth,
+  withAuthGetServerSideProps,
+} from "../../../lib/withAuth";
 import AdminLayout from "../../../components/layout/AdminLayout";
 import Link from "next/link";
 import {
@@ -29,6 +35,41 @@ function AdminDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const router = useRouter();
+  const auth = useAuth();
+
+  // Circuit breaker effect - prevent redirect loops
+  useEffect(() => {
+    // Check URL for circuit breaker parameters
+    const hasNoRedirect = router.query.noRedirect === "true";
+    const hasBreakLoop = router.query.breakLoop === "true";
+
+    // Skip the role check if the circuit breaker is active
+    if (hasNoRedirect || hasBreakLoop) {
+      console.log(
+        "[AdminDashboard] Circuit breaker active, skipping role check"
+      );
+      return;
+    }
+
+    // Direct role check from user metadata
+    const userRole = auth?.user?.publicMetadata?.role;
+    const isApproved = auth?.user?.publicMetadata?.approved === true;
+
+    console.log("[AdminDashboard] Access check:", { userRole, isApproved });
+
+    // Only allow approved admins
+    const isAuthorized =
+      (userRole === "admin" || userRole === "super_admin") && isApproved;
+
+    if (!isAuthorized && !loading) {
+      console.warn(
+        "[AdminDashboard] Unauthorized access, redirecting to user dashboard"
+      );
+      // Add breakLoop to prevent further redirects
+      router.replace("/dashboard/user?breakLoop=true&t=" + Date.now());
+    }
+  }, [router, auth.user, auth.isLoading, loading]);
 
   const fetchStats = async () => {
     try {
@@ -222,7 +263,10 @@ const adminActions = [
   },
 ];
 
-export default AdminDashboard;
+// Correct way to use withAuth - first as a component wrapper
+const ProtectedAdminDashboard = withAuth({ role: "admin" })(AdminDashboard);
 
-// Use withAuth with role=admin to protect this page
-export const getServerSideProps = withAuth({ role: "admin" });
+// Then set up getServerSideProps using the proper method
+export const getServerSideProps = withAuthGetServerSideProps({ role: "admin" });
+
+export default ProtectedAdminDashboard;

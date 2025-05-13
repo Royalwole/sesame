@@ -204,6 +204,21 @@ function AdminSettings() {
 }
 
 // Protect this page with authentication
-export const getServerSideProps = withAuth({ role: "admin" });
+export const getServerSideProps = async (context) => {
+  // Get the result from the withAuth HOC
+  const authResult = await withAuth({ role: "admin" })(context);
+
+  // Check if it already has a props key
+  if (authResult && authResult.props) {
+    return authResult;
+  }
+
+  // If not, wrap the result in a props object
+  return {
+    props: {
+      ...(authResult || {}),
+    },
+  };
+};
 
 export default AdminSettings;

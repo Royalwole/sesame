@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { withAuth } from "../../../lib/withAuth";
+import { withAuthGetServerSideProps } from "../../../lib/withAuth";
 import { useAuth } from "../../../contexts/AuthContext";
 import Link from "next/link";
 import Image from "next/image";
@@ -254,6 +254,7 @@ function AdminAgentsPage() {
 }
 
 // Protect this page with admin authentication
-export const getServerSideProps = withAuth({ role: "admin" });
+// Using the new withAuthGetServerSideProps function that ensures correct Next.js props structure
+export const getServerSideProps = withAuthGetServerSideProps({ role: "admin" });
 
 export default AdminAgentsPage;

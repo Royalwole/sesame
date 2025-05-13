@@ -1,8 +1,8 @@
 import { connectDB, disconnectDB, checkDBConnection } from "../../../lib/db";
-import { withJsonResponse } from "../../../lib/api/middleware";
 import { getAuth } from "@clerk/nextjs/server";
 import { clerkClient } from "@clerk/nextjs";
 import User from "../../../models/User";
+import { apiResponse } from "../../../lib/api-response";
 
 async function handler(req, res) {
   console.log("API /users/me called");
@@ -12,8 +12,7 @@ async function handler(req, res) {
   // Only allow GET method
   if (req.method !== "GET") {
     console.log(`[${requestId}] Method not allowed: ${req.method}`);
-    return res.status(405).json({
-      success: false,
+    return apiResponse(res, 405, {
       error: "Method not allowed",
       requestId,
     });
@@ -30,8 +29,7 @@ async function handler(req, res) {
       // Check if auth exists
       if (!auth?.userId) {
         console.log(`[${requestId}] No userId in auth object`);
-        return res.status(401).json({
-          success: false,
+        return apiResponse(res, 401, {
           error: "Unauthorized",
           message: "No authenticated user found",
           requestId,
@@ -87,23 +85,27 @@ async function handler(req, res) {
       console.log(`[${requestId}] User found/created with role: ${user.role}`);
 
       // Return successful response with user data
-      return res.status(200).json({
-        success: true,
-        requestId,
-        user: {
-          _id: user._id,
-          clerkId: user.clerkId,
-          firstName: user.firstName || "",
-          lastName: user.lastName || "",
-          email: user.email || "",
-          role: user.role || "user",
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          phone: user.phone || "",
-          bio: user.bio || "",
-          agentDetails: user.agentDetails || null,
+      return apiResponse(
+        res,
+        200,
+        {
+          requestId,
+          user: {
+            _id: user._id,
+            clerkId: user.clerkId,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            email: user.email || "",
+            role: user.role || "user",
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+            phone: user.phone || "",
+            bio: user.bio || "",
+            agentDetails: user.agentDetails || null,
+          },
         },
-      });
+        "User data retrieved successfully"
+      );
     } catch (error) {
       console.error(
         `[${requestId}] Error in /api/users/me (attempt ${retryCount + 1}):`,
@@ -120,8 +122,7 @@ async function handler(req, res) {
       }
 
       // If we've exhausted retries, return error with more specific message
-      return res.status(503).json({
-        success: false,
+      return apiResponse(res, 503, {
         error: "Service temporarily unavailable",
         message:
           "Database connection issue. Please try again in a few moments.",
@@ -133,5 +134,4 @@ async function handler(req, res) {
   }
 }
 
-// Apply JSON response middleware
-export default withJsonResponse(handler);
+export default handler;

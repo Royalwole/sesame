@@ -12,6 +12,7 @@ import {
   FiMenu,
   FiX,
   FiDatabase,
+  FiKey,
 } from "react-icons/fi";
 
 export default function DashboardNavigation() {
@@ -31,6 +32,11 @@ export default function DashboardNavigation() {
       href: "/dashboard/profile",
       label: "Profile",
       icon: <FiUser className="mr-2" />,
+    },
+    {
+      href: "/dashboard/permissions",
+      label: "My Permissions",
+      icon: <FiKey className="mr-2" />,
     },
     {
       href: "/dashboard/settings",
@@ -56,6 +62,11 @@ export default function DashboardNavigation() {
       label: "Agent Profile",
       icon: <FiUser className="mr-2" />,
     },
+    {
+      href: "/dashboard/permissions",
+      label: "My Permissions",
+      icon: <FiKey className="mr-2" />,
+    },
   ];
 
   const adminLinks = [
@@ -74,6 +85,11 @@ export default function DashboardNavigation() {
       href: "/dashboard/admin/listings",
       label: "All Listings",
       icon: <FiList className="mr-2" />,
+    },
+    {
+      href: "/dashboard/admin/permissions",
+      label: "Permissions",
+      icon: <FiKey className="mr-2" />,
     },
     {
       href: "/dashboard/admin/database",

@@ -1,273 +1,206 @@
-import { useState, useEffect } from "react";
-import { useAuth } from "../../contexts/AuthContext";
-import { ROLES } from "../../lib/role-management";
+import React, { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast'; // Using react-hot-toast instead of Chakra's useToast
+import { 
+  ROLES, 
+  getRoleDisplayName, 
+  getAssignableRoles 
+} from '../../lib/role-management';
 
 /**
- * Admin component for managing user roles
- * Provides UI to view and modify user roles with proper validation
+ * UserRoleManager Component
+ * 
+ * Allows admins to change user roles with a clean interface
+ * and displays the current role with visual indicators.
  */
-export default function UserRoleManager({ userId, onUpdate }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [successMessage, setSuccessMessage] = useState("");
-  const { isAdmin } = useAuth();
+const UserRoleManager = ({ userId, currentRole, onRoleChange, isDisabled = false }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(currentRole || ROLES.USER);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const cancelRef = useRef();
 
-  // New role selection
-  const [newRole, setNewRole] = useState("");
-  const [approved, setApproved] = useState(false);
-
-  // Fetch user role information
+  // Update selected role when currentRole prop changes
   useEffect(() => {
-    if (!userId || !isAdmin) return;
-    
-    async function fetchUserData() {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const response = await fetch(`/api/debug/role-debug?userId=${userId}`);
-        
-        if (!response.ok) {
-          throw new Error(`Error fetching user data: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && data.roleInfo) {
-          setUserData(data.roleInfo);
-          // Set initial form values based on current role
-          setNewRole(data.roleInfo.database.role);
-          setApproved(data.roleInfo.database.approved);
-        } else {
-          throw new Error(data.error || "Failed to load user data");
-        }
-      } catch (err) {
-        setError(err.message);
-        console.error("Error loading user role data:", err);
-      } finally {
-        setLoading(false);
-      }
+    if (currentRole) {
+      setSelectedRole(currentRole);
     }
-    
-    fetchUserData();
-  }, [userId, isAdmin]);
+  }, [currentRole]);
 
-  // Handle role change submission
-  async function handleRoleChange(e) {
-    e.preventDefault();
-    if (!userId || !newRole) return;
-    
-    setLoading(true);
-    setError(null);
-    setSuccessMessage("");
-    
+  // Map of role colors for badges
+  const getRoleBadgeColor = (role) => {
+    const colors = {
+      [ROLES.ADMIN]: 'bg-red-100 text-red-800',
+      [ROLES.SUPER_ADMIN]: 'bg-red-100 text-red-800',
+      [ROLES.AGENT]: 'bg-purple-100 text-purple-800',
+      [ROLES.AGENT_PENDING]: 'bg-yellow-100 text-yellow-800',
+      [ROLES.USER]: 'bg-gray-100 text-gray-800',
+      [ROLES.SUPPORT]: 'bg-green-100 text-green-800'
+    };
+    return colors[role] || 'bg-gray-100 text-gray-800';
+  };
+
+  // Handler for role change confirmation
+  const handleRoleChange = async () => {
+    if (selectedRole === currentRole) {
+      setIsConfirmOpen(false);
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const response = await fetch("/api/users/change-role", {
-        method: "POST",
+      const response = await fetch(`/api/users/${userId}/role`, {
+        method: 'PATCH',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userId,
-          role: newRole,
-          approved: newRole === ROLES.AGENT ? approved : false,
+          role: selectedRole
         }),
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to change role");
-      }
-      
+
       const data = await response.json();
-      
-      if (data.success) {
-        setSuccessMessage(`User role updated successfully to ${data.newRole}`);
-        // Refresh user data
-        const refreshResponse = await fetch(`/api/debug/role-debug?userId=${userId}`);
-        const refreshData = await refreshResponse.json();
-        setUserData(refreshData.roleInfo);
-        
-        // Notify parent component if provided
-        if (onUpdate) onUpdate(data);
-      } else {
-        throw new Error(data.error || "Operation failed");
-      }
-    } catch (err) {
-      setError(err.message);
-      console.error("Error changing role:", err);
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  // Handle forced sync between systems
-  async function handleSyncSystems(direction) {
-    if (!userId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      let endpoint = '';
-      
-      if (direction === 'toClerk') {
-        endpoint = `/api/users/sync-to-clerk?userId=${userId}`;
-      } else {
-        endpoint = `/api/users/sync-from-clerk?userId=${userId}`;
-      }
-      
-      const response = await fetch(endpoint);
-      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to sync");
+        throw new Error(data.error || 'Failed to update user role');
       }
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setSuccessMessage(`Sync ${direction === 'toClerk' ? 'to Clerk' : 'from Clerk'} successful!`);
-        
-        // Refresh user data
-        const refreshResponse = await fetch(`/api/debug/role-debug?userId=${userId}`);
-        const refreshData = await refreshResponse.json();
-        setUserData(refreshData.roleInfo);
-      } else {
-        throw new Error(data.error || "Sync operation failed");
+
+      toast.success(`User role has been changed to ${getRoleDisplayName(selectedRole)}`);
+
+      // Call the onRoleChange prop if provided
+      if (onRoleChange) {
+        onRoleChange(selectedRole);
       }
-    } catch (err) {
-      setError(err.message);
-      console.error("Error syncing:", err);
+    } catch (error) {
+      toast.error(error.message);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
+      setIsConfirmOpen(false);
     }
-  }
+  };
 
-  if (!isAdmin) {
-    return <div className="text-red-600">Admin access required</div>;
-  }
-
-  if (loading && !userData) {
-    return <div className="text-gray-500">Loading user role data...</div>;
-  }
-
-  if (error && !userData) {
-    return <div className="text-red-600">Error: {error}</div>;
-  }
-
-  if (!userData) {
-    return <div className="text-gray-500">No user data available</div>;
-  }
-
-  const { roleMatch, approvalMatch } = userData;
-  const hasInconsistency = !roleMatch || !approvalMatch;
+  // Get the list of available roles (using the constants)
+  const availableRoles = Object.values(ROLES);
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 max-w-2xl">
-      <h2 className="text-2xl font-bold mb-4">User Role Manager</h2>
-      
-      {/* Role consistency status */}
-      <div className="mb-6">
-        <div className="flex items-center mb-2">
-          <span className="font-semibold mr-2">Role Status:</span>
-          <span 
-            className={`px-3 py-1 rounded-full text-sm font-medium ${hasInconsistency 
-              ? 'bg-red-100 text-red-800' 
-              : 'bg-green-100 text-green-800'}`}
-          >
-            {hasInconsistency ? "Inconsistent" : "Consistent"}
+    <div className="border border-gray-200 rounded-lg shadow-sm mt-4 bg-white">
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-medium">User Role</h3>
+          <span className={`inline-flex items-center px-2 py-1 rounded-md text-sm font-medium ${getRoleBadgeColor(currentRole)}`}>
+            Current: {getRoleDisplayName(currentRole) || 'None'}
           </span>
         </div>
-        
-        {hasInconsistency && (
-          <div className="bg-yellow-100 text-yellow-800 p-3 rounded-md text-sm">
-            <p>Warning: User role data is inconsistent between Clerk and Database!</p>
-            <div className="mt-2">
-              <button 
-                className="bg-blue-500 hover:bg-blue-600 text-white rounded px-3 py-1 text-xs mr-2"
-                onClick={() => handleSyncSystems('toClerk')}
-                disabled={loading}
-              >
-                Sync DB to Clerk
-              </button>
-              <button 
-                className="bg-blue-500 hover:bg-blue-600 text-white rounded px-3 py-1 text-xs"
-                onClick={() => handleSyncSystems('fromClerk')}
-                disabled={loading}
-              >
-                Sync Clerk to DB
-              </button>
-            </div>
-          </div>
-        )}
       </div>
-      
-      {/* Current role information */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="bg-gray-50 p-4 rounded-md">
-          <h3 className="font-bold mb-2">Clerk Data</h3>
-          <p><span className="font-medium">Role:</span> {userData.clerk.role}</p>
-          <p><span className="font-medium">Approved:</span> {userData.clerk.approved ? "Yes" : "No"}</p>
-          <p><span className="font-medium">Email:</span> {userData.clerk.email}</p>
-          <p><span className="font-medium">Name:</span> {userData.clerk.firstName} {userData.clerk.lastName}</p>
-        </div>
-        
-        <div className="bg-gray-50 p-4 rounded-md">
-          <h3 className="font-bold mb-2">Database Data</h3>
-          <p><span className="font-medium">Role:</span> {userData.database.role}</p>
-          <p><span className="font-medium">Approved:</span> {userData.database.approved ? "Yes" : "No"}</p>
-          <p><span className="font-medium">Email:</span> {userData.database.email}</p>
-          <p><span className="font-medium">Name:</span> {userData.database.firstName} {userData.database.lastName}</p>
-        </div>
-      </div>
-      
-      {/* Change role form */}
-      <form onSubmit={handleRoleChange} className="mb-4">
-        <h3 className="font-bold mb-3">Change User Role</h3>
-        
+      <div className="p-4">
         <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">New Role</label>
+          <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+            Assign Role
+          </label>
           <select
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value)}
-            className="border rounded-md px-3 py-2 w-full"
-            disabled={loading}
+            id="role"
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value)}
+            disabled={isDisabled || isLoading}
+            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
           >
-            <option value={ROLES.USER}>User</option>
-            <option value={ROLES.AGENT_PENDING}>Agent (Pending)</option>
-            <option value={ROLES.AGENT}>Agent</option>
-            <option value={ROLES.ADMIN}>Admin</option>
+            {availableRoles.map((role) => (
+              <option key={role} value={role}>
+                {getRoleDisplayName(role)}
+              </option>
+            ))}
           </select>
+          <p className="mt-2 text-sm text-gray-500">
+            {selectedRole === currentRole ? 
+              "User already has this role" : 
+              "Changing roles will affect user permissions"}
+          </p>
         </div>
-        
-        {newRole === ROLES.AGENT && (
-          <div className="mb-4">
-            <label className="flex items-center">
-              <input 
-                type="checkbox" 
-                checked={approved} 
-                onChange={(e) => setApproved(e.target.checked)}
-                className="mr-2"
-                disabled={loading}
-              />
-              <span className="text-sm font-medium">Approved Agent</span>
-            </label>
-          </div>
-        )}
-        
-        {error && <div className="text-red-600 mb-4 text-sm">{error}</div>}
-        {successMessage && <div className="text-green-600 mb-4 text-sm">{successMessage}</div>}
         
         <button
-          type="submit"
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md"
-          disabled={loading}
+          type="button"
+          className={`w-full mt-4 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white 
+            ${isDisabled || isLoading || selectedRole === currentRole 
+              ? 'bg-blue-300 cursor-not-allowed' 
+              : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'}`}
+          onClick={() => setIsConfirmOpen(true)}
+          disabled={isDisabled || isLoading || selectedRole === currentRole}
         >
-          {loading ? "Updating..." : "Update Role"}
+          {isLoading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Processing...
+            </>
+          ) : (
+            selectedRole === currentRole ? 'No Change' : 'Update Role'
+          )}
         </button>
-      </form>
+      </div>
+
+      {/* Modal dialog for confirmation (replaces Chakra AlertDialog) */}
+      {isConfirmOpen && (
+        <div className="fixed inset-0 z-10 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => setIsConfirmOpen(false)}></div>
+            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                      Confirm Role Change
+                    </h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Are you sure you want to change this user's role from
+                        <span className={`mx-1 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${getRoleBadgeColor(currentRole)}`}>
+                          {getRoleDisplayName(currentRole)}
+                        </span>
+                        to
+                        <span className={`mx-1 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${getRoleBadgeColor(selectedRole)}`}>
+                          {getRoleDisplayName(selectedRole)}
+                        </span>?
+                      </p>
+                      <p className="mt-2 text-sm text-gray-500">
+                        This will affect their permissions and access levels.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button 
+                  type="button" 
+                  className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm ${isLoading ? 'opacity-75 cursor-not-allowed' : ''}`}
+                  onClick={handleRoleChange}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </>
+                  ) : 'Confirm Change'}
+                </button>
+                <button 
+                  type="button" 
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  onClick={() => setIsConfirmOpen(false)}
+                  ref={cancelRef}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default UserRoleManager;

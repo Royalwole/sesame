@@ -26,7 +26,7 @@ export default function CreateListing() {
         return;
       }
 
-      // Create form data with proper error handling
+      // Create form data for browser-side FormData API only
       const apiFormData = new FormData();
 
       // Add basic form fields
@@ -65,17 +65,21 @@ export default function CreateListing() {
         console.log(`Adding ${imageFiles.length} images to form data`);
 
         imageFiles.forEach((file, index) => {
-          // File is directly a File object
-          if (file instanceof File) {
-            apiFormData.append("images", file);
-          }
-          // File is within a file property (common pattern in some components)
-          else if (file && file.file instanceof File) {
-            apiFormData.append("images", file.file);
-          }
-          // Otherwise log the issue
-          else {
-            console.warn(`Invalid file at index ${index}:`, file);
+          try {
+            // File is directly a File object
+            if (file instanceof File) {
+              apiFormData.append("images", file);
+            }
+            // File is within a file property (common pattern in some components)
+            else if (file && file.file instanceof File) {
+              apiFormData.append("images", file.file);
+            }
+            // Otherwise log the issue
+            else {
+              console.warn(`Invalid file at index ${index}:`, file);
+            }
+          } catch (fileError) {
+            console.error(`Error adding file ${index}:`, fileError);
           }
         });
       }

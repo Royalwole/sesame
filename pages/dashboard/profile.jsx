@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { withAuth } from "../../lib/withAuth";
+import { withAuthServerSideProps } from "../../lib/withAuth";
 import Head from "next/head";
 import toast from "react-hot-toast";
 import { FiUser, FiMail, FiPhone, FiSave, FiAlertCircle, FiRefreshCw } from "react-icons/fi";
@@ -412,5 +412,11 @@ function ProfilePage() {
 
 export default ProfilePage;
 
-// Server-side props for initial authentication check
-export const getServerSideProps = withAuth();
+// Fix the server-side props function to properly wrap or return a valid object with props key
+export const getServerSideProps = async (context) => {
+  // Use withAuthServerSideProps to protect this page
+  const authProps = await withAuthServerSideProps()(context);
+  
+  // Return the props from withAuthServerSideProps
+  return authProps;
+};

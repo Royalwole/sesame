@@ -203,4 +203,8 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
 ```
 
+to generate a SCHEDULED_TASKS_API_KEY run this command on terminal
+
+ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
 

@@ -1,4 +1,4 @@
-import formidable from "formidable";
+import { IncomingForm } from "formidable";
 import { connectDB, disconnectDB } from "../../../lib/db";
 import Listing from "../../../models/Listing";
 import User from "../../../models/User";
@@ -14,6 +14,14 @@ export const config = {
     // Increase size limit for large images
     responseLimit: "50mb",
   },
+};
+
+// Helper function to extract single value from potential array
+const extractValue = (field) => {
+  if (Array.isArray(field)) {
+    return field[0];
+  }
+  return field;
 };
 
 export default async function handler(req, res) {
@@ -35,7 +43,7 @@ export default async function handler(req, res) {
     }
 
     // Parse form data with robust error handling
-    const form = new formidable.IncomingForm({
+    const form = new IncomingForm({
       keepExtensions: true,
       multiples: true,
       maxFileSize: 10 * 1024 * 1024, // 10MB
@@ -51,6 +59,8 @@ export default async function handler(req, res) {
         resolve([fields, files]);
       });
     });
+
+    console.log("Received form fields:", Object.keys(fields));
 
     // Connect to database
     await connectDB();
@@ -83,16 +93,19 @@ export default async function handler(req, res) {
             file.originalFilename || ".jpg"
           )}`;
           const imagePath = path.join(uploadDir, uniqueFilename);
+          const storagePath = `uploads/${uniqueFilename}`;
 
           // Copy file from temp to uploads directory
           await fs.promises.copyFile(file.filepath, imagePath);
 
-          // Add image data
+          // Add image data with required path field
           images.push({
             url: `/uploads/${uniqueFilename}`,
+            path: storagePath, // Add the required path field
             filename: uniqueFilename,
             originalName: file.originalFilename || "uploaded-image",
             size: file.size,
+            contentType: file.mimetype || "image/jpeg",
           });
         } catch (imgError) {
           console.error(
@@ -108,17 +121,21 @@ export default async function handler(req, res) {
     let features = [];
     if (fields.features) {
       try {
-        if (typeof fields.features === "string") {
+        const featuresValue = extractValue(fields.features);
+
+        if (typeof featuresValue === "string") {
           // Try to parse as JSON
-          if (fields.features.startsWith("[")) {
-            features = JSON.parse(fields.features);
+          if (featuresValue.startsWith("[")) {
+            features = JSON.parse(featuresValue);
           } else {
             // Or split by comma
-            features = fields.features
+            features = featuresValue
               .split(",")
               .map((f) => f.trim())
               .filter(Boolean);
           }
+        } else if (Array.isArray(featuresValue)) {
+          features = featuresValue;
         }
       } catch (e) {
         console.error("Error parsing features:", e);
@@ -126,23 +143,36 @@ export default async function handler(req, res) {
     }
 
     // Create listing document with all fields
+    // Extract single values from potential arrays using the helper function
     const listing = new Listing({
-      title: fields.title,
-      description: fields.description || "",
-      price: parseFloat(fields.price) || 0,
-      bedrooms: parseInt(fields.bedrooms) || 0,
-      bathrooms: parseInt(fields.bathrooms) || 0,
-      propertyType: fields.propertyType || "house",
-      listingType: fields.listingType || "sale",
-      address: fields.address || "",
-      city: fields.city || "",
-      state: fields.state || "",
-      country: fields.country || "Nigeria",
+      title: extractValue(fields.title),
+      description: extractValue(fields.description) || "",
+      price: parseFloat(extractValue(fields.price)) || 0,
+      bedrooms: parseInt(extractValue(fields.bedrooms)) || 0,
+      bathrooms: parseInt(extractValue(fields.bathrooms)) || 0,
+      propertyType: extractValue(fields.propertyType) || "house",
+      listingType: extractValue(fields.listingType) || "sale",
+      address: extractValue(fields.address) || "",
+      city: extractValue(fields.city) || "",
+      state: extractValue(fields.state) || "",
+      country: extractValue(fields.country) || "Nigeria",
       features,
       images,
-      status: fields.status || "published",
+      status: extractValue(fields.status) || "published",
       createdBy: user._id,
     });
+
+    // Validate the listing before saving
+    try {
+      await listing.validate();
+    } catch (validationError) {
+      console.error("Validation error:", validationError);
+      return res.status(400).json({
+        success: false,
+        error: "Validation failed",
+        message: validationError.message,
+      });
+    }
 
     // Save to database
     await listing.save();

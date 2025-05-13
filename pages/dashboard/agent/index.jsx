@@ -288,7 +288,14 @@ function AgentDashboard() {
   );
 }
 
-export default AgentDashboard;
+// Correctly wrap the component with withAuth
+const ProtectedAgentDashboard = withAuth({ role: 'agent' })(AgentDashboard);
 
-// Server-side props to protect this page
-export const getServerSideProps = withAuth({ role: 'agent' });
+// Fix the getServerSideProps function to properly return props
+export const getServerSideProps = async (context) => {
+  return {
+    props: {} // Return an empty props object that Next.js expects
+  };
+};
+
+export default ProtectedAgentDashboard;
