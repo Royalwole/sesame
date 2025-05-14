@@ -4,7 +4,6 @@ import {
   useState,
   useEffect,
   useCallback,
-  useRef,
 } from "react";
 import { useUser, useClerk, useAuth as useClerkAuth } from "@clerk/nextjs";
 import { useDatabaseConnection } from "./DatabaseContext";
@@ -17,22 +16,13 @@ import {
   isAnyAgent as checkIsAnyAgent,
 } from "../lib/role-management";
 
-import {
-  getUserRole,
-  getApprovalStatus,
-  refreshUserSession,
-} from "../lib/clerk-client"; // Changed from clerk-role-management to client-safe version
-
-// Import the API resilience utilities
-import { fetchUserProfile, makeResilient } from "../lib/api-resilience";
-
 // Create context
 const AuthContext = createContext();
 
 // Cache configuration
 const USER_CACHE_CONFIG = {
   storageKey: "td_user_cache",
-  ttl: 1800000, // 30 minutes (increased from 10 minutes for better offline resilience)
+  ttl: 600000, // 10 minutes (increased from 5 minutes for better UX)
 };
 
 // Auth provider component
@@ -41,342 +31,276 @@ export function AuthProvider({ children }) {
   const { user, isSignedIn, isLoaded } = useUser();
   const { userId } = useClerkAuth();
   const { signOut } = useClerk();
-  const clerk = useClerk();
-  const { isConnected } = useDatabaseConnection();
-
-  // State for storing the MongoDB user document
   const [dbUser, setDbUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [useCache, setUseCache] = useState(false);
-  const [loopDetected, setLoopDetected] = useState(false);
+  const [lastSynced, setLastSynced] = useState(null);
+  const { isConnected } = useDatabaseConnection();
+  const [syncAttempts, setSyncAttempts] = useState(0);
+  const MAX_SYNC_ATTEMPTS = 3;
 
-  // Derived state (calculated from Clerk directly)
-  const [role, setRole] = useState(null);
-  const [isApproved, setIsApproved] = useState(false);
+  // Check if we should use cached user data
+  const checkCachedUser = useCallback(() => {
+    if (typeof window === "undefined") return null;
 
-  // Role-specific state
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isAgent, setIsAgent] = useState(false);
-  const [isPendingAgent, setIsPendingAgent] = useState(false);
-
-  // Track fetch attempts for better error messaging
-  const fetchAttempts = useRef(0);
-  const lastFetchTime = useRef(null);
-
-  // Circuit breaker pattern - detect potential loops
-  useEffect(() => {
-    // Check URL for signs of redirect loops
-    const hasNoRedirect = router.query.noRedirect === "true";
-    const hasBreakLoop = router.query.breakLoop === "true";
-    const hasRedirectCounter = router.query.rc && parseInt(router.query.rc) > 0;
-    const hasTooManyTimestamps = (router.asPath.match(/t=/g) || []).length > 1;
-
-    // If we detect potential loops, set the loop detection state
-    if (
-      hasNoRedirect ||
-      hasBreakLoop ||
-      hasRedirectCounter ||
-      hasTooManyTimestamps
-    ) {
-      console.warn(
-        "[AuthContext] Potential redirect loop detected, activating circuit breaker"
-      );
-      setLoopDetected(true);
-    } else {
-      setLoopDetected(false);
-    }
-
-    // Also check localStorage for a loop counter
     try {
-      const loopCount = localStorage.getItem("td_redirect_loop_count");
-      if (loopCount && parseInt(loopCount) > 3) {
-        console.warn(
-          "[AuthContext] Excessive redirects detected via localStorage"
-        );
-        setLoopDetected(true);
-        // Reset after a while to allow the system to recover
-        setTimeout(() => {
-          localStorage.setItem("td_redirect_loop_count", "0");
-        }, 60000); // 1 minute timeout
+      const cachedData = localStorage.getItem(USER_CACHE_CONFIG.storageKey);
+      if (!cachedData) return null;
+
+      const cached = JSON.parse(cachedData);
+
+      // Validate cache freshness and user match
+      if (
+        cached &&
+        cached.updatedAt &&
+        cached.clerkId === user?.id &&
+        Date.now() - new Date(cached.updatedAt).getTime() <
+          USER_CACHE_CONFIG.ttl
+      ) {
+        console.log("Using valid cached user data");
+        return cached;
       }
     } catch (e) {
-      // Ignore localStorage errors
+      console.error("Error parsing cached user data:", e);
+      // If there's an error with the cache, clear it
+      localStorage.removeItem(USER_CACHE_CONFIG.storageKey);
     }
-  }, [router.query, router.asPath]);
 
-  // Track redirects to detect loops
-  useEffect(() => {
-    if (!loopDetected && router.asPath.includes("redirect")) {
-      try {
-        // Increment redirect counter in localStorage
-        const currentCount = parseInt(
-          localStorage.getItem("td_redirect_loop_count") || "0"
-        );
-        localStorage.setItem(
-          "td_redirect_loop_count",
-          String(currentCount + 1)
-        );
-
-        // Auto-reset after 30 seconds of no redirects
-        setTimeout(() => {
-          localStorage.setItem("td_redirect_loop_count", "0");
-        }, 30000);
-      } catch (e) {
-        // Ignore localStorage errors
-      }
-    }
-  }, [router.asPath, loopDetected]);
-
-  // Read user data from cache
-  const readFromCache = useCallback(() => {
-    try {
-      const cachedDataStr = localStorage.getItem(USER_CACHE_CONFIG.storageKey);
-      if (!cachedDataStr) return null;
-
-      const cachedData = JSON.parse(cachedDataStr);
-      const now = Date.now();
-
-      // Check if cached data is still valid
-      if (
-        cachedData &&
-        cachedData.expiresAt > now &&
-        cachedData.userId === userId
-      ) {
-        return cachedData.user;
-      }
-
-      return null;
-    } catch (err) {
-      console.warn("Error reading from cache:", err);
-      return null;
-    }
-  }, [userId]);
+    return null;
+  }, [user?.id]);
 
   // Save user data to cache
-  const saveToCache = useCallback(
-    (userData) => {
-      if (!userData || !userId) return;
+  const updateCachedUser = useCallback((userData) => {
+    if (typeof window === "undefined" || !userData) return;
 
+    try {
+      const cacheData = {
+        ...userData,
+        updatedAt: new Date().toISOString(),
+      };
+
+      localStorage.setItem(
+        USER_CACHE_CONFIG.storageKey,
+        JSON.stringify(cacheData)
+      );
+    } catch (e) {
+      console.error("Error caching user data:", e);
+    }
+  }, []);
+
+  // Create fallback user from Clerk data
+  const createFallbackUser = useCallback(() => {
+    if (!user) return null;
+
+    // Always ensure we have a role
+    const role = user.publicMetadata?.role || ROLES.USER;
+    const approved = user.publicMetadata?.approved || true;
+
+    console.log("Creating fallback user with role:", role);
+
+    return {
+      clerkId: user.id,
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      email: user.primaryEmailAddress?.emailAddress || "",
+      profileImage: user.imageUrl || "",
+      role: role,
+      approved: approved,
+      isFallback: true, // Flag to indicate this isn't from DB
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }, [user]);
+
+  // Handle sign out with cleanup
+  const handleSignOut = useCallback(
+    async (redirectToSignIn = true) => {
       try {
-        const expiresAt = Date.now() + USER_CACHE_CONFIG.ttl;
-        localStorage.setItem(
-          USER_CACHE_CONFIG.storageKey,
-          JSON.stringify({
-            userId,
-            user: userData,
-            expiresAt,
-          })
-        );
-      } catch (err) {
-        console.warn("Error saving to cache:", err);
+        // Clear local user data
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(USER_CACHE_CONFIG.storageKey);
+        }
+
+        setDbUser(null);
+        setError(null);
+
+        // Sign out via Clerk
+        await signOut();
+
+        // Redirect to home page instead of sign-in page
+        router.push("/");
+      } catch (e) {
+        console.error("Error during sign out:", e);
       }
     },
-    [userId]
+    [signOut, router]
   );
 
-  // Fetch the MongoDB user document with enhanced resilience
-  const fetchUserData = useCallback(
-    async (forceRefresh = false) => {
-      // Safety check: exit early if prerequisites not met
-      if (!isSignedIn || !isLoaded || !userId) {
+  // Sync Clerk user with database user
+  const syncUserData = useCallback(
+    async (force = false) => {
+      // Don't sync if not signed in or Clerk hasn't loaded
+      if (!isSignedIn || !isLoaded) {
+        setDbUser(null);
         setIsLoading(false);
+        setError(null);
         return;
       }
 
-      // Don't trigger multiple simultaneous fetches
-      if (lastFetchTime.current && Date.now() - lastFetchTime.current < 2000) {
-        console.log("Skipping duplicate fetchUserData call");
-        return;
-      }
-
-      // Check if we should use cached data
-      if (!forceRefresh && !isConnected) {
-        const cachedUser = readFromCache();
+      // Check cache first unless forced refresh
+      if (!force) {
+        const cachedUser = checkCachedUser();
         if (cachedUser) {
-          console.log("Using cached user data (offline mode)");
           setDbUser(cachedUser);
-          setUseCache(true);
+          setLastSynced(new Date(cachedUser.updatedAt));
           setIsLoading(false);
           return;
         }
       }
 
-      // Create a stable mounted ref
-      const isMountedRef = { current: true };
+      // Start loading state
       setIsLoading(true);
-      fetchAttempts.current++;
-      lastFetchTime.current = Date.now();
+      setError(null);
 
       try {
-        // Use the resilient profile fetch instead of direct API call
-        // This will never throw errors and always return usable data
-        const userData = await fetchUserProfile();
+        const response = await fetch("/api/users/sync", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          signal: AbortSignal.timeout(8000), // Modern timeout approach
+        });
 
-        if (isMountedRef.current) {
-          setDbUser(userData);
-          setError(null);
-          saveToCache(userData); // Save to cache for offline use
-          setUseCache(false);
+        if (!response.ok) {
+          throw new Error(`${response.status}: ${response.statusText}`);
         }
-      } catch (error) {
-        // This catch should rarely be triggered due to resilience layer,
-        // but we keep it as a safety measure
-        console.error("Error in fetchUserData:", error);
 
-        if (isMountedRef.current) {
-          setError(error.message);
+        const data = await response.json();
+        if (!data?.success || !data?.user) {
+          throw new Error(data?.error || "Invalid response");
+        }
 
-          // Try to use cached data as fallback
-          const cachedUser = readFromCache();
-          if (cachedUser) {
-            console.log("Using cached user data after fetch error");
-            setDbUser(cachedUser);
-            setUseCache(true);
+        // Success path - update user data and cache it
+        const userData = data.user;
+        setDbUser(userData);
+        setLastSynced(new Date());
+        updateCachedUser(userData);
+        setSyncAttempts(0);
+        setError(null);
+      } catch (err) {
+        console.error(`User sync failed:`, err.message);
+
+        // Create a fallback user to ensure dashboard access
+        const fallbackUser = createFallbackUser();
+
+        // Log but don't block user experience
+        if (err.name === "TimeoutError" || err.name === "AbortError") {
+          console.warn("Sync timeout - using fallback user data");
+          setError({
+            type: "timeout",
+            message: "Connection timed out. Using local data.",
+            blocking: false,
+          });
+        } else if (err.message.includes("401")) {
+          setError({
+            type: "auth",
+            message: "Authentication issue detected.",
+            blocking: false,
+          });
+
+          // Only sign out after multiple auth failures
+          if (syncAttempts >= 2) {
+            console.warn("Multiple auth failures detected");
+            // But don't immediately redirect - let user continue using dashboard
           }
+        } else {
+          // Generic error that doesn't block UI
+          setError({
+            type: "sync",
+            message: "Background sync failed. Using available data.",
+            blocking: false,
+          });
         }
+
+        // Always use fallback data to ensure UI access
+        if (fallbackUser) {
+          setDbUser(fallbackUser);
+          updateCachedUser(fallbackUser);
+          console.log("Using fallback user data to maintain dashboard access");
+        }
+
+        setSyncAttempts((prev) => prev + 1);
       } finally {
-        if (isMountedRef.current) {
-          setIsLoading(false);
-        }
-      }
-
-      // Return cleanup function
-      return () => {
-        isMountedRef.current = false;
-      };
-    },
-    [isSignedIn, isLoaded, userId, isConnected, readFromCache, saveToCache]
-  );
-
-  // Force refresh the user session to get the latest metadata
-  const refreshSession = useCallback(async () => {
-    if (!clerk) return;
-
-    try {
-      await refreshUserSession(clerk);
-      console.log("User session refreshed successfully");
-      return true;
-    } catch (error) {
-      console.error("Error refreshing session:", error);
-      return false;
-    }
-  }, [clerk]);
-
-  // Function to refresh user data
-  const syncUserData = useCallback(
-    async (forceRefresh = false) => {
-      try {
-        await fetchUserData(forceRefresh);
-
-        // Only force session refresh if explicitly requested
-        if (forceRefresh) {
-          try {
-            // Using the improved refreshSession that handles network errors gracefully
-            const refreshSuccessful = await refreshSession();
-            if (!refreshSuccessful) {
-              console.log(
-                "Session refresh skipped due to network issues - using cached data"
-              );
-            }
-          } catch (error) {
-            // Swallow the error to prevent crashes
-            console.error("Error during session refresh:", error);
-          }
-        }
-      } catch (error) {
-        console.error("Error syncing user data:", error);
-        // Don't rethrow - we've already handled the error in fetchUserData
+        setIsLoading(false);
+        setLastSynced(new Date());
       }
     },
-    [fetchUserData, refreshSession]
+    [
+      isSignedIn,
+      isLoaded,
+      user,
+      checkCachedUser,
+      updateCachedUser,
+      handleSignOut,
+      syncAttempts,
+      createFallbackUser,
+    ]
   );
 
-  // Update derived role state based on Clerk user metadata (source of truth)
+  // Initial data sync when auth state changes
   useEffect(() => {
-    if (!isLoaded || !user) {
-      setRole(null);
-      setIsApproved(false);
-      setIsAdmin(false);
-      setIsAgent(false);
-      setIsPendingAgent(false);
-      return;
+    // Only sync when Clerk is loaded and we know about DB connection
+    if (isLoaded && isConnected !== undefined) {
+      syncUserData();
     }
+  }, [isSignedIn, isLoaded, isConnected, syncUserData]);
 
-    // Get role and approval status directly from Clerk
-    const currentRole = getUserRole(user);
-    const approved = getApprovalStatus(user);
+  // Derived auth state using the role management utility functions
+  const isAuthenticated = !!isSignedIn;
+  const isAdmin = checkIsAdmin(dbUser);
+  const isAgent = checkIsAnyAgent(dbUser);
+  const isApprovedAgent = checkIsApprovedAgent(dbUser);
+  const isPendingAgent = checkIsPendingAgent(dbUser);
+  const hasError = !!error;
 
-    // Update state
-    setRole(currentRole);
-    setIsApproved(approved);
+  // Provide all auth values
+  const authContextValue = {
+    // User state
+    user, // Raw clerk user
+    dbUser, // Database user
+    isAuthenticated, // Is signed in
 
-    // Update role flags
-    setIsAdmin(checkIsAdmin(user));
-    setIsAgent(checkIsApprovedAgent(user));
-    setIsPendingAgent(checkIsPendingAgent(user));
-  }, [isLoaded, user]);
-
-  // Fetch user data on initial load or when signed in state changes
-  useEffect(() => {
-    // Create a ref to track if component is mounted
-    const isMounted = { current: true };
-
-    // Call fetchUserData and capture its cleanup function
-    const cleanup = fetchUserData();
-
-    // Return cleanup function to React that combines our own cleanup with fetchUserData's cleanup
-    return () => {
-      isMounted.current = false;
-      // Call the fetchUserData cleanup function if it exists
-      if (cleanup && typeof cleanup === "function") {
-        cleanup();
-      }
-    };
-  }, [fetchUserData]);
-
-  // User sign-out handler with proper error handling
-  const handleSignOut = useCallback(async () => {
-    try {
-      await signOut();
-      // No need to navigate - Clerk will handle the redirect
-    } catch (error) {
-      console.error("Error signing out:", error);
-      // Force a hard redirect if Clerk signOut fails
-      window.location.href = "/";
-    }
-  }, [signOut]);
-
-  // Context value
-  const value = {
-    user,
-    dbUser,
-    isSignedIn,
-    isLoaded,
-    isLoading,
-    error,
-    useCache,
-    role,
+    // Role helpers
     isAdmin,
     isAgent,
+    isApprovedAgent,
     isPendingAgent,
-    isApproved,
-    loopDetected, // Expose the loop detection state to consumers
-    signOut: handleSignOut,
+
+    // Status information
+    isLoading,
+    hasError,
+    error,
+    lastSynced,
+    syncAttempts,
+
+    // Actions
     syncUserData,
-    refreshSession,
+    signOut: handleSignOut,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={authContextValue}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-// Custom hook to use the auth context
-export const useAuth = () => {
+// Custom hook to use auth context
+export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-};
+}
 
 export default AuthContext;

@@ -4,7 +4,7 @@ import {
     FiHome, FiHeart, FiCalendar, FiSearch, FiTrendingUp,
     FiMap, FiAlertCircle, FiPlus, FiChevronRight, FiArrowRight,
     FiCheckCircle, FiBell, FiUser, FiLogOut, FiMenu,
-    FiEye, FiStar, FiX, FiRefreshCw
+    FiEye, FiStar, FiX
 } from 'react-icons/fi';
 import { getImageUrl, handleImageError } from '../../lib/image-utils';
 import Image from 'next/image';
@@ -24,95 +24,56 @@ export default function UserDashboard() {
     const [recentListings, setRecentListings] = useState([]);
     const [error, setError] = useState(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [retryCount, setRetryCount] = useState(0);
-    const MAX_RETRIES = 2;
 
     useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setIsLoading(true);
+                // Wrap each fetch in try-catch to prevent one failure from stopping all data loading
+                try {
+                    const data = await fetchUserDashboardData();
+                    setDashboardData(data);
+                } catch (dashboardError) {
+                    console.error("Dashboard data fetch error:", dashboardError);
+                    setDashboardData({
+                        stats: {
+                            savedListings: 0,
+                            viewedListings: 0,
+                            upcomingInspections: 0,
+                            recentSearches: 0,
+                            matches: 0,
+                            notifications: 0
+                        }
+                    });
+                }
+                
+                try {
+                    const favorites = await fetchUserFavorites({ limit: 6 });
+                    setSavedListings(favorites || []);
+                } catch (favoritesError) {
+                    console.error("Favorites fetch error:", favoritesError);
+                    setSavedListings([]);
+                }
+                
+                try {
+                    const inspections = await fetchUserInspections({ limit: 5, futureOnly: true });
+                    setUpcomingInspections(inspections || []);
+                } catch (inspectionsError) {
+                    console.error("Inspections fetch error:", inspectionsError);
+                    setUpcomingInspections([]);
+                }
+                
+                setIsLoading(false);
+            } catch (error) {
+                console.error("Error loading dashboard data:", error);
+                setError("Failed to load dashboard data. Please try again later.");
+                setIsLoading(false);
+                setShowFallbackBanner(true);
+                initializeFallbackData();
+            }
+        };
         fetchData();
     }, []);
-
-    const fetchData = async (isRetry = false) => {
-        try {
-            if (!isRetry) {
-                setIsLoading(true);
-            } else {
-                setIsRefreshing(true);
-            }
-            
-            // Wrap each fetch in try-catch to prevent one failure from stopping all data loading
-            try {
-                const data = await fetchUserDashboardData();
-                setDashboardData(data);
-                // Reset retry count if successful
-                setRetryCount(0);
-            } catch (dashboardError) {
-                console.error("Dashboard data fetch error:", dashboardError);
-                // Fall back to default stats
-                setDashboardData({
-                    stats: {
-                        savedListings: 0,
-                        viewedListings: 0,
-                        upcomingInspections: 0,
-                        recentSearches: 0,
-                        matches: 0,
-                        notifications: 0
-                    }
-                });
-            }
-            
-            try {
-                const favorites = await fetchUserFavorites({ limit: 6 });
-                setSavedListings(favorites || []);
-            } catch (favoritesError) {
-                console.error("Favorites fetch error:", favoritesError);
-                setSavedListings([]);
-            }
-            
-            try {
-                const inspections = await fetchUserInspections({ limit: 5, futureOnly: true });
-                setUpcomingInspections(inspections || []);
-            } catch (inspectionsError) {
-                console.error("Inspections fetch error:", inspectionsError);
-                setUpcomingInspections([]);
-            }
-
-            // Initialize recent listings if not already done
-            if (recentListings.length === 0) {
-                initializeFallbackRecentListings();
-            }
-            
-            if (isRetry) {
-                setIsRefreshing(false);
-            } else {
-                setIsLoading(false);
-            }
-            
-        } catch (error) {
-            console.error("Error loading dashboard data:", error);
-            setError("Failed to load dashboard data. Please try again later.");
-            
-            if (isRetry) {
-                setIsRefreshing(false);
-            } else {
-                setIsLoading(false);
-            }
-            
-            setShowFallbackBanner(true);
-            initializeFallbackData();
-        }
-    };
-
-    const retryFetch = async () => {
-        if (retryCount < MAX_RETRIES) {
-            setRetryCount(prev => prev + 1);
-            setError(null);
-            await fetchData(true);
-        } else {
-            setError("Maximum retry attempts reached. Using available data.");
-            setShowFallbackBanner(true);
-        }
-    };
 
     const initializeFallbackData = () => {
         setDashboardData({
@@ -127,10 +88,6 @@ export default function UserDashboard() {
         });
         setSavedListings([]);
         setUpcomingInspections([]);
-        initializeFallbackRecentListings();
-    };
-
-    const initializeFallbackRecentListings = () => {
         setRecentListings([
             {
                 id: '101',

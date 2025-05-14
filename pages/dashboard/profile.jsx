@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { withAuthServerSideProps } from "../../lib/withAuth";
 import Head from "next/head";
 import toast from "react-hot-toast";
-import { FiUser, FiMail, FiPhone, FiSave, FiAlertCircle, FiRefreshCw } from "react-icons/fi";
+import { FiUser, FiMail, FiPhone, FiSave } from "react-icons/fi";
 import { AuthGuard } from "../../lib/withAuth";
 import Loader from "../../components/utils/Loader";
 
@@ -18,10 +18,6 @@ function ProfilePage() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const [profileError, setProfileError] = useState(null);
-  const [isFixing, setIsFixing] = useState(false);
-  const [fixAttempts, setFixAttempts] = useState(0);
-  const MAX_FIX_ATTEMPTS = 2;
 
   // Initialize form with user data when available
   useEffect(() => {
@@ -33,73 +29,30 @@ function ProfilePage() {
         phone: dbUser.phone || "",
         bio: dbUser.bio || "",
       });
-      // If we have user data, clear any previous errors
-      setProfileError(null);
     }
   }, [dbUser]);
 
-  // Ensure user profile exists in the database with retry and timeout mechanisms
-  const ensureProfileExists = useCallback(async () => {
-    // Skip if we already have user data or have tried too many times
-    if (dbUser?.firstName || fixAttempts >= MAX_FIX_ATTEMPTS) return;
-
-    setIsFixing(true);
-
-    try {
-      console.log("Fixing user profile to ensure it exists in database...");
-
-      // Create abort controller for timeout
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 5000);
-
-      const response = await fetch('/api/users/fix-profile', {
-        signal: abortController.signal
-      });
-
-      // Clear the timeout since request completed
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        console.log("Profile fix completed successfully");
-        // Refresh user data
-        await syncUserData(true);
-        setProfileError(null);
-      } else {
-        const errorText = await response.text();
-        console.error(`Error fixing profile: ${response.status}`, errorText);
-
-        // Don't block the UI, but show a recoverable error
-        setProfileError({
-          message: "Unable to load complete profile data. Some features may be limited.",
-          isRecoverable: true
-        });
-      }
-    } catch (error) {
-      console.error("Error ensuring profile exists:", error);
-
-      if (error.name === "AbortError") {
-        setProfileError({
-          message: "Profile verification timed out. You can still update your profile.",
-          isRecoverable: true
-        });
-      } else {
-        setProfileError({
-          message: "Couldn't verify your profile. You can still make changes.",
-          isRecoverable: true
-        });
-      }
-    } finally {
-      setIsFixing(false);
-      setFixAttempts(prev => prev + 1);
-    }
-  }, [dbUser, syncUserData, fixAttempts]);
-
-  // Trigger profile verification when component mounts
+  // Ensure user profile exists in the database
   useEffect(() => {
-    if (!isLoading) {
-      ensureProfileExists();
+    async function ensureProfileExists() {
+      try {
+        // Only make the API call if there seems to be an issue with the user data
+        if (!dbUser || isLoading) {
+          console.log("Fixing user profile to ensure it exists in database...");
+          const response = await fetch('/api/users/fix-profile');
+          if (response.ok) {
+            console.log("Profile fix completed successfully");
+            // Refresh user data
+            syncUserData(true);
+          }
+        }
+      } catch (error) {
+        console.error("Error ensuring profile exists:", error);
+      }
     }
-  }, [ensureProfileExists, isLoading]);
+    
+    ensureProfileExists();
+  }, [dbUser, isLoading, syncUserData]);
 
   // Handle form input changes
   const handleChange = (e) => {
@@ -111,7 +64,7 @@ function ProfilePage() {
     setIsDirty(true);
   };
 
-  // Save profile changes with proper error handling
+  // Save profile changes
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSaving(true);
@@ -123,67 +76,30 @@ function ProfilePage() {
     };
 
     try {
-      // Create abort controller for timeout
-      const abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController.abort(), 8000);
-
       const response = await fetch("/api/users/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(dataToSubmit),
-        signal: abortController.signal
       });
 
-      // Clear the timeout since request completed
-      clearTimeout(timeoutId);
-
-      // Handle different response cases
-      if (response.ok) {
-        const data = await response.json();
-
-        // Sync user data to get the latest changes
-        await syncUserData(true);
-
-        toast.success("Profile updated successfully");
-        setIsDirty(false);
-        setProfileError(null);
-      } else {
-        let errorMessage = "Failed to update profile";
-
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch (jsonError) {
-          console.error("Error parsing error response:", jsonError);
-        }
-
-        throw new Error(errorMessage);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update profile");
       }
+
+      // Sync user data to get the latest changes
+      await syncUserData();
+
+      toast.success("Profile updated successfully");
+      setIsDirty(false);
     } catch (error) {
       console.error("Error updating profile:", error);
-
-      if (error.name === "AbortError") {
-        toast.error("Profile update timed out. Please try again.");
-      } else {
-        toast.error(error.message || "Failed to update profile");
-      }
-
-      // Don't block further edit attempts
-      setProfileError({
-        message: "Profile update failed, but you can try again.",
-        isRecoverable: true
-      });
+      toast.error(error.message || "Failed to update profile");
     } finally {
       setIsSaving(false);
     }
-  };
-
-  // Force retry profile fix
-  const handleRetryProfileFix = async () => {
-    setFixAttempts(0); // Reset attempts counter
-    await ensureProfileExists(); // Try again
   };
 
   // Show loading state
@@ -199,25 +115,6 @@ function ProfilePage() {
         </Head>
 
         <div className="max-w-4xl mx-auto">
-          {profileError && (
-            <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-md">
-              <div className="flex items-center">
-                <FiAlertCircle className="h-5 w-5 text-yellow-400 mr-2" />
-                <span className="text-yellow-700">{profileError.message}</span>
-                {profileError.isRecoverable && (
-                  <button
-                    onClick={handleRetryProfileFix}
-                    disabled={isFixing}
-                    className="ml-auto flex items-center text-sm px-2 py-1 rounded bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
-                  >
-                    <FiRefreshCw className={`mr-1 ${isFixing ? 'animate-spin' : ''}`} />
-                    {isFixing ? 'Retrying...' : 'Retry'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-6">
               My Profile
