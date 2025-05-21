@@ -55,6 +55,14 @@ export default function ListingDetail({
     }
   };
 
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(price);
+  };
+
   return (
     <div className="listing-detail">
       {/* Main image gallery */}
@@ -219,7 +227,7 @@ export default function ListingDetail({
               {listingType === "rent" ? "Rent" : "Price"}
             </h2>
             <p className="text-3xl font-bold text-wine mb-4">
-              ₦{formattedPrice}
+              {formatPrice(listing.price)}
               {listingType === "rent" && (
                 <span className="text-lg">/month</span>
               )}

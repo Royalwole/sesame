@@ -2,7 +2,7 @@ import { IncomingForm } from "formidable";
 import { connectDB, disconnectDB } from "../../../lib/db";
 import Listing from "../../../models/Listing";
 import User from "../../../models/User";
-import { getAuth } from "@clerk/nextjs/server";
+import { getAuth, getSession } from "@clerk/nextjs/server";
 import fs from "fs";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
@@ -31,16 +31,36 @@ export default async function handler(req, res) {
       .json({ success: false, error: "Method not allowed" });
   }
 
+  const requestId = `create_${Math.random().toString(36).substring(2, 10)}`;
+  console.log(`[${requestId}] Starting listing creation`);
   let dbConnection = false;
 
   try {
-    // Get authenticated user
-    const auth = getAuth(req);
-    if (!auth?.userId) {
-      return res
-        .status(401)
-        .json({ success: false, error: "Authentication required" });
+    const session = await getSession({ req });
+    if (!session) return res.status(401).json({ error: "Unauthorized" });
+
+    // Find user by clerkId with better error handling
+    console.log(
+      `[${requestId}] Looking up user with clerkId: ${session.user.id}`
+    );
+    await connectDB();
+    dbConnection = true;
+
+    const dbUser = await User.findOne({ clerkId: session.user.id });
+    if (!dbUser) {
+      console.error(
+        `[${requestId}] User profile not found for clerkId: ${session.user.id}`
+      );
+      return res.status(400).json({
+        success: false,
+        error: "User profile not found",
+        message: "Please try refreshing your profile before creating a listing",
+      });
     }
+
+    console.log(
+      `[${requestId}] Found user: ${dbUser._id}, role: ${dbUser.role}`
+    );
 
     // Parse form data with robust error handling
     const form = new IncomingForm({
@@ -65,12 +85,6 @@ export default async function handler(req, res) {
     // Connect to database
     await connectDB();
     dbConnection = true;
-
-    // Find user in database
-    const user = await User.findOne({ clerkId: auth.userId });
-    if (!user) {
-      return res.status(404).json({ success: false, error: "User not found" });
-    }
 
     // Process uploaded images
     let images = [];
@@ -159,7 +173,18 @@ export default async function handler(req, res) {
       features,
       images,
       status: extractValue(fields.status) || "published",
-      createdBy: user._id,
+      // Properly reference the user
+      agentId: dbUser._id,
+      createdBy: {
+        _id: dbUser._id,
+        name:
+          dbUser.fullName ||
+          `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim(),
+        email: dbUser.email,
+        profileImage: dbUser.profileImage,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     // Validate the listing before saving
@@ -177,7 +202,11 @@ export default async function handler(req, res) {
     // Save to database
     await listing.save();
 
-    // Return success
+    console.log(
+      `[${requestId}] Listing created successfully with ID: ${listing._id}`
+    );
+
+    // Return success with detailed response
     return res.status(201).json({
       success: true,
       message: "Listing created successfully",
@@ -185,6 +214,7 @@ export default async function handler(req, res) {
         ...listing.toObject(),
         _id: listing._id.toString(),
       },
+      requestId,
     });
   } catch (error) {
     console.error("Error creating listing:", error);

@@ -294,9 +294,7 @@ export default clerkMiddleware((auth, request) => {
       }
 
       return NextResponse.redirect(signInUrl);
-    }
-
-    // CRITICAL CHANGE: For dashboard routes, if there's any sign of a loop, just send to user dashboard
+    } // CRITICAL CHANGE: For dashboard routes, if there's any sign of a loop, just send to user dashboard
     if (pathname.includes("/dashboard/") && userId && user) {
       // Skip API routes and static assets
       if (isApiRoute || isStaticAsset) {
@@ -310,18 +308,40 @@ export default clerkMiddleware((auth, request) => {
       const searchParams = url.searchParams;
       const hasTimestamp = searchParams.has("t");
       const hasRedirectCounter = searchParams.has("rc");
+      const breakLoop = searchParams.get("breakLoop") === "true";
 
-      // If we detect a potential loop or already have multiple timestamps/counters, stop the redirects
-      if (
-        loopCheck.inLoop ||
-        loopCheck.redirectCount > 0 ||
-        (hasTimestamp && hasRedirectCounter) ||
-        searchParams.get("breakLoop") === "true"
-      ) {
-        console.warn(
-          "[Middleware] Potential dashboard loop detected, bypassing all redirections"
+      // If user has explicitly requested to break the loop, always honor this
+      if (breakLoop) {
+        console.log(
+          "[Middleware] Breaking loop as requested via URL parameter"
         );
         return NextResponse.next();
+      }
+
+      // If we detect a potential loop, redirect to the fix-dashboard utility instead
+      if (
+        loopCheck.inLoop ||
+        loopCheck.redirectCount > 2 ||
+        (hasTimestamp && hasRedirectCounter)
+      ) {
+        console.warn(
+          "[Middleware] Potential dashboard loop detected, redirecting to fix utility"
+        ); // Don't redirect if already on any fix or debug page
+        if (
+          pathname === "/fix-dashboard" ||
+          pathname === "/fix-permission-cache" ||
+          pathname === "/emergency-fix" ||
+          pathname === "/debug-permissions" ||
+          pathname === "/bypass-agent"
+        ) {
+          return NextResponse.next();
+        }
+
+        // Redirect to the emergency fix tool which can directly fix account issues
+        const emergencyUrl = new URL("/emergency-fix", request.url);
+        emergencyUrl.searchParams.set("from", pathname);
+        emergencyUrl.searchParams.set("t", Date.now());
+        return NextResponse.redirect(emergencyUrl);
       }
 
       // For all other cases, let the page handle any necessary redirections

@@ -4,8 +4,12 @@ import Link from "next/link";
 import Head from "next/head";
 import AgentLayout from "../../../components/layout/AgentLayout";
 import { FiAlertTriangle } from "react-icons/fi";
+import {
+  withAgentAuth,
+  withAgentAuthGetServerSideProps,
+} from "../../../lib/withAuth";
 
-export default function Custom404() {
+function Custom404() {
   const router = useRouter();
 
   useEffect(() => {
@@ -47,3 +51,9 @@ export default function Custom404() {
     </AgentLayout>
   );
 }
+
+// Add server-side authentication
+export const getServerSideProps = withAgentAuthGetServerSideProps();
+
+// Export the component wrapped with authentication
+export default withAgentAuth(Custom404);

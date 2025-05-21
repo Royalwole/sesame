@@ -9,6 +9,7 @@ export default function RichTextArea({
   rows = 5,
   placeholder = "",
   maxLength = 10000,
+  onKeyDown,
 }) {
   const [charCount, setCharCount] = useState(value ? value.length : 0);
 
@@ -18,6 +19,15 @@ export default function RichTextArea({
     onChange(e);
   };
 
+  // Handle key events to prevent accidental form submission
+  const handleKeyDown = (e) => {
+    // Do not prevent the default Enter behavior since this is a textarea and Enter should create new lines
+    // Only pass along any custom key down handler if provided
+    if (onKeyDown) {
+      onKeyDown(e);
+    }
+  };
+
   return (
     <div className="relative">
       <textarea
@@ -25,6 +35,7 @@ export default function RichTextArea({
         name={name}
         value={value}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
         required={required}
         rows={rows}
         maxLength={maxLength}

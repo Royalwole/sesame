@@ -3,12 +3,12 @@ const nextConfig = {
   reactStrictMode: true,
 
   // External packages
-  serverExternalPackages: ["mongoose"],
-
-  // ESLint configuration
+  serverExternalPackages: ["mongoose"], // ESLint configuration
   eslint: {
-    // This is needed when using the new flat config format
-    ignoreDuringBuilds: true,
+    // Allow Next.js to use its built-in ESLint integration
+    ignoreDuringBuilds: false,
+    // Check all directories
+    dirs: ["pages", "components", "lib", "contexts", "hooks"],
   },
 
   experimental: {},
@@ -224,6 +224,53 @@ const nextConfig = {
         },
       ],
     };
+  },
+  // Enhanced webpack configuration for better module resolution and handling of server-only modules
+  webpack: (config, { isServer }) => {
+    // Prioritize JSX extensions in module resolution
+    if (config.resolve && config.resolve.extensions) {
+      // Make sure .jsx is before .js to prioritize it
+      const extensions = config.resolve.extensions;
+      const hasJsx = extensions.includes(".jsx");
+
+      // If .jsx is already there, move it to the front
+      if (hasJsx) {
+        const filteredExtensions = extensions.filter((ext) => ext !== ".jsx");
+        config.resolve.extensions = [".jsx", ...filteredExtensions];
+      } else {
+        // Add .jsx at the front if not present
+        config.resolve.extensions = [".jsx", ...extensions];
+      }
+    }
+
+    // Handle Node.js modules differently in client vs server
+    if (!isServer) {
+      // Replace Node.js modules with empty modules on the client side
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        os: false,
+        crypto: false,
+        stream: false,
+        http: false,
+        https: false,
+        zlib: false,
+        util: false,
+        net: false,
+        tls: false,
+        child_process: false,
+        dns: false,
+        dgram: false,
+        constants: false,
+        module: false,
+        timers: false,
+        console: false,
+        dotenv: false,
+      };
+    }
+
+    return config;
   },
 };
 

@@ -1,19 +1,83 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { withAgentAuth } from "../../../../lib/withAuth";
+import {
+  withAgentAuth,
+  withAgentAuthGetServerSideProps,
+} from "../../../../lib/withAuth";
 import Layout from "../../../../components/layout/AgentLayout";
 import Head from "next/head";
 import Link from "next/link";
 import { FiArrowLeft } from "react-icons/fi";
 import CreateListingForm from "../../../../components/listings/CreateListingForm";
 import toast from "react-hot-toast";
+import { preventAccidentalSubmit } from "../../../../lib/form-submission-utils";
+import { useAuthLoopDetection } from "../../../../lib/auth-loop-breaker";
+import { useCircuitBreaker } from "../../../../lib/circuit-breaker";
 
-export default function CreateListing() {
+function CreateListing() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  // Apply circuit breaker to stop refresh cycles - force break for this page
+  useCircuitBreaker({
+    forceBreak: true, // Ensure we immediately apply protection for this page
+    threshold: 2, // Lower threshold for this problematic page
+    timeWindow: 3000, // Shorter time window to detect refresh loops faster
+  });
 
+  // Apply loop detection with lower thresholds for this page
+  const { loopDetected } = useAuthLoopDetection({
+    maxPageLoads: 2,
+    timeWindow: 3000,
+    debug: true,
+    applyFix: true, // Ensure we apply the fix automatically
+  });
+  // Effect to detect if we've been redirected or reloaded too many times
+  useEffect(() => {
+    const hasBreakLoop = router.query.breakLoop === "true";
+    const hasTimestamp = router.query.t !== undefined;
+
+    // Log detailed debugging info
+    console.log("[CreateListing] Page load detected:", {
+      path: router.pathname,
+      query: router.query,
+      hasBreakLoop,
+      hasTimestamp,
+      loopDetected,
+    });
+
+    // Add a direct fix for the current page if we detect multiple timestamps
+    // This will break the refresh cycle without needing to reload
+    if (
+      (hasTimestamp || loopDetected) &&
+      !hasBreakLoop &&
+      typeof window !== "undefined"
+    ) {
+      console.log(
+        "[CreateListing] Applying circuit breaker to prevent refresh loop"
+      );
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("breakLoop", "true");
+        url.searchParams.set("bypassLoad", "true");
+        url.searchParams.delete("t"); // Remove timestamp to prevent accumulation
+        // Apply a new timestamp to ensure URL uniqueness
+        url.searchParams.set("ts", Date.now().toString());
+        window.history.replaceState({}, document.title, url.toString());
+
+        // Set a flag in local storage to indicate we've broken the loop
+        localStorage.setItem("listings_create_loop_broken", "true");
+
+        console.log("[CreateListing] Circuit breaker successfully applied");
+      } catch (e) {
+        console.error("[CreateListing] Error applying circuit breaker:", e);
+      }
+    }
+  }, [router.pathname, router.query, loopDetected]);
   const handleCreateListing = async (formData, imageFiles) => {
     if (submitting) return;
+
+    // Note: No need for e.preventDefault() here since this isn't directly attached to a form event
+    // The form component (CreateListingForm) already handles that
 
     try {
       setSubmitting(true);
@@ -84,19 +148,25 @@ export default function CreateListing() {
         });
       }
 
-      // Set timeout to prevent hanging requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 1 minute timeout
+      // Import the fetch utility dynamically to avoid modifying imports
+      const fetchUtilModule = await import(
+        "../../../../lib/fetch-with-timeout"
+      );
 
       try {
-        // Make the API call with better error handling
-        const response = await fetch("/api/listings/create", {
-          method: "POST",
-          body: apiFormData,
-          signal: controller.signal,
-        });
+        // Make the API call with better error handling using our utility
+        // This handles timeout and AbortController creation/cleanup automatically
+        const response = await fetchUtilModule.fetchWithTimeout(
+          "/api/listings/create",
+          {
+            method: "POST",
+            body: apiFormData,
+          },
+          60000,
+          "Listing creation request timed out"
+        );
 
-        clearTimeout(timeoutId);
+        // No need for manual timeout management anymore
 
         if (!response.ok) {
           let errorMessage = `Error (${response.status})`;
@@ -122,19 +192,22 @@ export default function CreateListing() {
           router.push(`/dashboard/agent/listings/${data.listing._id}`);
         }, 500);
       } catch (requestError) {
-        clearTimeout(timeoutId);
+        // Use our utility to check if this is an AbortError
+        const { isAbortError } = await import(
+          "../../../../lib/fetch-with-timeout"
+        );
 
-        if (requestError.name === "AbortError") {
+        if (isAbortError(requestError)) {
+          console.warn("Listing creation request was aborted:", requestError);
           toast.error("Request timed out. The server may be busy.", {
             id: loadingToast,
           });
         } else {
+          console.error("API request error:", requestError);
           toast.error(requestError.message || "Failed to create listing", {
             id: loadingToast,
           });
         }
-
-        console.error("API request error:", requestError);
       }
     } catch (error) {
       console.error("Error creating listing:", error);
@@ -176,4 +249,7 @@ export default function CreateListing() {
 }
 
 // Protect this page with agent auth
-export const getServerSideProps = withAgentAuth();
+export const getServerSideProps = withAgentAuthGetServerSideProps();
+
+// Wrap the component with withAgentAuth HOC
+export default withAgentAuth(CreateListing);

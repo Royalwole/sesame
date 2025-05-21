@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { validateForm, ValidationSchemas } from "../../lib/validation";
+import { preventAccidentalSubmit } from "../../lib/form-submission-utils";
 
 export default function ProfileForm({ user, onUpdate }) {
   const [formData, setFormData] = useState({
@@ -24,9 +25,13 @@ export default function ProfileForm({ user, onUpdate }) {
       setFormErrors((prev) => ({ ...prev, [name]: null }));
     }
   };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Prevent accidental form submissions
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
 
     // Validate using our validation library
     const { errors, isValid } = validateForm(formData, ValidationSchemas.user);
@@ -70,7 +75,10 @@ export default function ProfileForm({ user, onUpdate }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form
+      onSubmit={preventAccidentalSubmit(handleSubmit)}
+      className="space-y-4"
+    >
       <Input
         label="Name"
         name="name"

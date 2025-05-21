@@ -149,3 +149,9 @@ select:focus {
     padding-right: 2rem;
   }
 }
+
+/* Ensure Naira symbol styling is consistent */
+.currency-naira {
+  font-family: sans-serif; /* Ensure consistent font for currency symbol */
+  font-weight: 500;
+}

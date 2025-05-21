@@ -1,0 +1,189 @@
+// filepath: c:\Users\HomePC\Desktop\topdial\components\listings\ListingCard.jsx
+import React from "react";
+import Link from "next/link";
+import PropTypes from "prop-types";
+import { useInView } from "react-intersection-observer";
+// Standard import path for Feather icons
+import { FiHome, FiBed, FiBath, FiSquare, FiMapPin, FiClock, FiAlertTriangle, FiImage } from "react-icons/fi";
+
+// Cache status constants outside component to prevent re-creation
+const STATUS_STYLES = {
+  for_sale: "bg-green-500",
+  published: "bg-green-500", // Add alias for 'published' status
+  sold: "bg-red-500",
+  under_contract: "bg-yellow-500",
+  pending: "bg-orange-500",
+  off_market: "bg-gray-500",
+};
+
+const STATUS_TEXT = {
+  for_sale: "For Sale",
+  published: "For Sale", // Add alias for 'published' status
+  sold: "Sold",
+  under_contract: "Under Contract",
+  pending: "Pending",
+  off_market: "Off Market",
+};
+
+// Static fallback image
+const FALLBACK_IMAGE_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23f1f5f9'/%3E%3Cpath d='M30,40 L70,40 L70,70 L30,70 Z' fill='%23e2e8f0'/%3E%3Cpath d='M50,20 L80,50 L80,80 L20,80 L20,50 Z' fill='%23cbd5e1'/%3E%3C/svg%3E";
+
+function ListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
+  const [ref, inView] = useInView({
+    triggerOnce: true,
+    rootMargin: "200px 0px",
+  });
+  
+  // Safety check for invalid listing
+  if (!listing || !listing._id) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-4 text-gray-500 text-center">
+        <FiAlertTriangle size={24} className="mx-auto mb-2 text-amber-400" />
+        <p>Property listing unavailable</p>
+      </div>
+    );
+  }
+
+  const {
+    _id,
+    title = "Untitled Property",
+    price = 0,
+    location = {},
+    bedrooms = 0,
+    bathrooms = 0,
+    squareFeet = 0,
+    images = [],
+    status = "for_sale",
+    createdAt,
+  } = listing;
+
+  // Format currency with Nigerian Naira symbol
+  const formattedPrice = `₦${price.toLocaleString()}`;
+  
+  // Format location text
+  const locationText = location.city && location.state 
+    ? `${location.city}, ${location.state}` 
+    : location.city || location.state || "Unknown Location";
+
+  // Check if listing is recent (within 7 days)
+  const isRecentListing = createdAt && 
+    (new Date() - new Date(createdAt) < 7 * 24 * 60 * 60 * 1000);
+  
+  // Determine image size based on component size
+  const imageHeight = size === "small" ? "h-36" : size === "large" ? "h-56" : "h-48";
+  const cardStyles = size === "small" ? "text-sm" : "";
+  
+  // Handle click events
+  const handleClick = () => {
+    if (onClick) onClick({ listingId: _id, title });
+  };
+
+  return (
+    <Link 
+      href={`/listings/${_id}`} 
+      className={`block h-full bg-white rounded-lg shadow-sm overflow-hidden transition-shadow hover:shadow-md ${cardStyles}`}
+      onClick={handleClick}
+    >
+      <article ref={ref}>
+        {/* Image Section */}
+        <div className={`relative ${imageHeight} bg-gray-100 overflow-hidden`}>
+          {inView && images.length > 0 ? (
+            <img
+              src={images[0]}
+              alt={title}
+              className="w-full h-full object-cover transition-transform hover:scale-105"
+              loading="lazy"
+              onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = FALLBACK_IMAGE_DATA;
+              }}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <FiHome size={48} className="text-gray-400" />
+            </div>
+          )}
+          
+          {/* Price overlay */}
+          <div className="absolute bottom-0 left-0 bg-blue-600 text-white px-3 py-1 font-medium">
+            {formattedPrice}
+          </div>
+          
+          {/* Status badge */}
+          {status && (
+            <div
+              className={`absolute top-2 right-2 ${
+                STATUS_STYLES[status] || "bg-gray-500"
+              } text-white px-2 py-1 rounded text-sm`}
+            >
+              {STATUS_TEXT[status] || "Unknown"}
+            </div>
+          )}
+          
+          {/* "New" badge for recent listings */}
+          {isRecentListing && (
+            <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-medium flex items-center">
+              <FiClock size={12} className="mr-1" />
+              New
+            </div>
+          )}
+        </div>
+
+        {/* Content Section */}
+        <div className="p-4">
+          <h3 className="font-medium text-lg text-gray-900 line-clamp-1">
+            {title}
+          </h3>
+          <div className="flex items-center text-gray-600 text-sm mb-3 mt-2">
+            <FiMapPin size={14} className="mr-1 flex-shrink-0" />
+            <span className="truncate">{locationText}</span>
+          </div>
+          <div className="flex justify-between text-sm text-gray-500 border-t pt-3">
+            {bedrooms > 0 && (
+              <div className="flex items-center">
+                <FiBed className="mr-1" />
+                <span>{bedrooms} {bedrooms === 1 ? "bed" : "beds"}</span>
+              </div>
+            )}
+            {bathrooms > 0 && (
+              <div className="flex items-center">
+                <FiBath className="mr-1" />
+                <span>{bathrooms} {bathrooms === 1 ? "bath" : "baths"}</span>
+              </div>
+            )}
+            {squareFeet > 0 && (
+              <div className="flex items-center">
+                <FiSquare className="mr-1" />
+                <span>{squareFeet.toLocaleString()} ft²</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+// Define prop types
+ListingCard.propTypes = {
+  listing: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    title: PropTypes.string,
+    price: PropTypes.number,
+    location: PropTypes.shape({
+      city: PropTypes.string,
+      state: PropTypes.string,
+    }),
+    bedrooms: PropTypes.number,
+    bathrooms: PropTypes.number,
+    squareFeet: PropTypes.number,
+    images: PropTypes.arrayOf(PropTypes.string),
+    status: PropTypes.string,
+    createdAt: PropTypes.string,
+  }).isRequired,
+  onClick: PropTypes.func,
+  preloadImages: PropTypes.bool,
+  size: PropTypes.oneOf(['small', 'default', 'large']),
+};
+
+export default ListingCard;

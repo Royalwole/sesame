@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { withAgentAuth } from "../../../lib/withAuth";
+import {
+  withAgentAuth,
+  withAgentAuthGetServerSideProps,
+} from "../../../lib/withAuth";
 import { useAuth } from "../../../contexts/AuthContext";
 import Head from "next/head";
 import AgentLayout from "../../../components/layout/AgentLayout";
 import toast from "react-hot-toast";
 import { FiEdit, FiSave } from "react-icons/fi";
+import { preventAccidentalSubmit } from "../../../lib/form-submission-utils";
 
-export default function AgentProfile() {
+function AgentProfile() {
   const { dbUser, user, syncUserData } = useAuth();
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,6 +34,12 @@ export default function AgentProfile() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Prevent accidental form submissions
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -263,4 +273,7 @@ export default function AgentProfile() {
 }
 
 // Use withAgentAuth to protect this page
-export const getServerSideProps = withAgentAuth();
+export const getServerSideProps = withAgentAuthGetServerSideProps();
+
+// Export the wrapped component instead of the base component
+export default withAgentAuth(AgentProfile);

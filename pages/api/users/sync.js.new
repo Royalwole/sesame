@@ -1,0 +1,167 @@
+// filepath: c:\Users\HomePC\Desktop\topdial\pages\api\users\sync.js
+import { connectDB, disconnectDB } from "../../../lib/db";
+import User from "../../../models/User";
+import { getAuth } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs";
+
+export default async function handler(req, res) {
+  // Track request for debugging
+  const requestId = `sync_${Date.now().toString(36)}`;
+  console.log(`[${requestId}] User sync request initiated`);
+
+  if (req.method !== "GET") {
+    return res.status(405).json({
+      success: false,
+      error: "Method not allowed",
+      requestId,
+    });
+  }
+
+  try {
+    const auth = getAuth(req);
+    if (!auth.userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized",
+        requestId,
+      });
+    }
+
+    console.log(`[${requestId}] Syncing data for user: ${auth.userId}`);
+
+    try {
+      await connectDB();
+      console.log(`[${requestId}] Database connected`);
+    } catch (dbError) {
+      console.error(`[${requestId}] Database connection error:`, dbError);
+      return res.status(500).json({
+        success: false,
+        error: "Database connection error",
+        message: dbError.message,
+        requestId,
+      });
+    }
+
+    // Get the user from Clerk
+    let clerkUser;
+    try {
+      clerkUser = await clerkClient.users.getUser(auth.userId);
+      console.log(`[${requestId}] Retrieved Clerk user data`);
+    } catch (clerkError) {
+      console.error(`[${requestId}] Clerk API error:`, clerkError);
+      await disconnectDB();
+      return res.status(500).json({
+        success: false,
+        error: "Failed to fetch user data from Clerk",
+        message: clerkError.message,
+        requestId,
+      });
+    }
+
+    if (!clerkUser) {
+      console.error(`[${requestId}] No Clerk user found for ID: ${auth.userId}`);
+      await disconnectDB();
+      return res.status(404).json({
+        success: false,
+        error: "User not found in Clerk",
+        requestId,
+      });
+    }
+
+    // Check if the user exists in MongoDB
+    let dbUser;
+    try {
+      dbUser = await User.findOne({ clerkId: auth.userId });
+      console.log(
+        `[${requestId}] MongoDB lookup complete. Found: ${Boolean(dbUser)}`
+      );
+    } catch (findError) {
+      console.error(`[${requestId}] Error finding user in MongoDB:`, findError);
+      await disconnectDB();
+      return res.status(500).json({
+        success: false,
+        error: "Database lookup failed",
+        message: findError.message,
+        requestId,
+      });
+    }
+
+    const userData = {
+      clerkId: clerkUser.id,
+      email:
+        clerkUser.emailAddresses && clerkUser.emailAddresses[0]
+          ? clerkUser.emailAddresses[0].emailAddress
+          : null,
+      firstName: clerkUser.firstName || "",
+      lastName: clerkUser.lastName || "",
+      fullName: `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim(),
+      profileImageUrl: clerkUser.imageUrl || null,
+      role: clerkUser.publicMetadata?.role || "user",
+      isApproved: clerkUser.publicMetadata?.isApproved || false,
+      phoneNumber:
+        clerkUser.phoneNumbers && clerkUser.phoneNumbers[0]
+          ? clerkUser.phoneNumbers[0].phoneNumber
+          : null,
+      lastUpdated: new Date(),
+    };
+
+    // Either update or create the user record in MongoDB
+    let result;
+    try {
+      if (dbUser) {
+        // Update existing user
+        result = await User.findOneAndUpdate(
+          { clerkId: auth.userId },
+          { $set: userData },
+          { new: true }
+        );
+        console.log(`[${requestId}] Updated existing user in MongoDB`);
+      } else {
+        // Create new user
+        userData.createdAt = new Date();
+        const newUser = new User(userData);
+        result = await newUser.save();
+        console.log(`[${requestId}] Created new user in MongoDB`);
+      }
+    } catch (dbSaveError) {
+      console.error(
+        `[${requestId}] Error saving user to MongoDB:`,
+        dbSaveError
+      );
+      await disconnectDB();
+      return res.status(500).json({
+        success: false,
+        error: "Failed to save user data",
+        message: dbSaveError.message,
+        requestId,
+      });
+    }
+
+    await disconnectDB();
+    console.log(`[${requestId}] Sync completed successfully`);
+
+    return res.status(200).json({
+      success: true,
+      message: "User data synchronized successfully",
+      userId: auth.userId,
+      dbUserId: result._id,
+      requestId,
+    });
+  } catch (error) {
+    console.error(`[${requestId}] Unhandled error:`, error);
+    try {
+      await disconnectDB();
+    } catch (disconnectError) {
+      console.error(
+        `[${requestId}] Error disconnecting from database:`,
+        disconnectError
+      );
+    }
+    return res.status(500).json({
+      success: false,
+      error: "An unexpected error occurred",
+      message: error.message,
+      requestId,
+    });
+  }
+}

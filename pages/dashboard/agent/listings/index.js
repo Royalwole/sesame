@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { withAgentAuth } from "../../../../lib/withAuth";
+import {
+  withAgentAuth,
+  withAgentAuthGetServerSideProps,
+} from "../../../../lib/withAuth";
 import Layout from "../../../../components/layout/AgentLayout";
 import Head from "next/head";
 import Link from "next/link";
@@ -15,7 +18,7 @@ import {
 import { getAgentListings } from "../../../../lib/listing-api";
 import toast from "react-hot-toast";
 
-export default function AgentListings() {
+function AgentListings() {
   const router = useRouter();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -208,4 +211,7 @@ export default function AgentListings() {
 }
 
 // Use withAgentAuth to protect this page
-export const getServerSideProps = withAgentAuth();
+export const getServerSideProps = withAgentAuthGetServerSideProps();
+
+// Export the wrapped component
+export default withAgentAuth(AgentListings);

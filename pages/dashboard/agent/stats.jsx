@@ -3,7 +3,7 @@ import { FiDownload, FiFilter, FiRefreshCw } from 'react-icons/fi';
 import AgentLayout from '../../../components/layout/AgentLayout';
 import StatsChart from '../../../components/dashboard/StatsChart';
 import StatsSummary from '../../../components/dashboard/StatsSummary';
-import { withAuth } from '../../../lib/withAuth';
+import { withAuth, withAuthGetServerSideProps } from '../../../lib/withAuth';
 
 function StatsAnalysisPage() {
   const [timeRange, setTimeRange] = useState('30d');
@@ -168,7 +168,10 @@ function StatsAnalysisPage() {
   );
 }
 
-export default StatsAnalysisPage;
+// Default export moved below with withAuth wrapper
 
 // Server-side props to protect this page
-export const getServerSideProps = withAuth({ role: 'agent' });
+export const getServerSideProps = withAuthGetServerSideProps({ role: 'agent' });
+
+// Export wrapped component with auth protection
+export default withAuth({ role: 'agent' })(StatsAnalysisPage);

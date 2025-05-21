@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
+// Import the ListingCard component with .jsx extension
 import ListingCard from "./ListingCard.jsx";
 import { FiAlertCircle, FiLoader } from "react-icons/fi";
 
@@ -61,6 +62,15 @@ const ListingsGrid = ({
     }, {});
   }, [listings, preloadImages]);
 
+  // Add this helper function for consistent price formatting
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(price);
+  };
+
   // Determine what to render based on loading/error/empty states
   if (loading) {
     return (
@@ -93,7 +103,6 @@ const ListingsGrid = ({
       </div>
     );
   }
-
   return (
     <div
       className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 ${gridClassName}`}
@@ -104,7 +113,7 @@ const ListingsGrid = ({
           key={`listing-${listing._id}`}
           listing={listing}
           onClick={onListingClick}
-          preloadImages={preloadConfig[listing._id] || false}
+          preloadImages={(preloadConfig && preloadConfig[listing._id]) || false}
         />
       ))}
     </div>

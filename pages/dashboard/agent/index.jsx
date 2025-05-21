@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
-import { withAuth } from '../../../lib/withAuth';
+import { withAgentAuth } from '../../../lib/withAuth';
 import { FiPlus, FiList, FiEye, FiMessageSquare, FiClock, FiRefreshCw } from 'react-icons/fi';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AgentStatusBanner from '../../../components/dashboard/AgentStatusBanner';
 import AgentLayout from '../../../components/layout/AgentLayout';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import RedirectLoopDetector from '../../../components/debug/RedirectLoopDetector';
+import AgentDashboardErrorBoundary from '../../../components/dashboard/AgentDashboardErrorBoundary';
 
 function AgentDashboard() {
+  const router = useRouter();
   const [listings, setListings] = useState([]);
   const [stats, setStats] = useState({
     activeListings: 0,
@@ -18,6 +22,7 @@ function AgentDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loopDetected, setLoopDetected] = useState(false);
 
   async function fetchAgentData() {
     try {
@@ -64,7 +69,6 @@ function AgentDashboard() {
     setRefreshing(true);
     await fetchAgentData();
   };
-
   if (isLoading) {
     return (
       <AgentLayout title="Agent Dashboard">
@@ -74,28 +78,65 @@ function AgentDashboard() {
       </AgentLayout>
     );
   }
-
+  
   return (
-    <AgentLayout title="Agent Dashboard">
-      <Head>
-        <title>Agent Dashboard | TopDial</title>
-      </Head>
+    <AgentDashboardErrorBoundary>
+      <AgentLayout title="Agent Dashboard">
+        <Head>
+          <title>Agent Dashboard | TopDial</title>
+        </Head>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-6">
-          {/* Status Banner */}
-          <AgentStatusBanner />
-          
-          {/* Page Header */}
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Agent Dashboard</h1>
-            <Link 
-              href="/dashboard/agent/listings/create"
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-wine hover:bg-wine/90"
-            >
-              <FiPlus className="mr-2" /> Create Listing
-            </Link>
+        <RedirectLoopDetector onDetect={() => setLoopDetected(true)} />
+
+        {/* Help message for users experiencing loading issues */}
+        {router?.query?.t && (
+          <div className="bg-blue-50 p-4 mx-4 mt-4 rounded-md">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-blue-700">
+                  If you were experiencing loading issues, you should now be able to access your dashboard. 
+                  <a href="/dashboard/fix-agent-dashboard" className="font-medium underline"> Click here</a> if you're still having problems.
+                </p>
+              </div>
+              <div className="ml-auto pl-3">
+                <div className="-mx-1.5 -my-1.5">
+                  <button 
+                    onClick={() => {
+                      const newUrl = window.location.pathname;
+                      window.history.replaceState({}, document.title, newUrl);
+                    }}
+                    className="inline-flex rounded-md p-1.5 text-blue-500 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <span className="sr-only">Dismiss</span>
+                    <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
+        )}
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-6">
+            {/* Status Banner */}
+            <AgentStatusBanner />
+            
+            {/* Page Header */}            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-gray-900">Agent Dashboard</h1>
+              <Link 
+                href="/dashboard/agent/listings/create"
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-wine hover:bg-wine/90"
+              >
+                <FiPlus className="mr-2" /> Create Listing
+              </Link>
+            </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -281,15 +322,15 @@ function AgentDashboard() {
                 </Link>
               </div>
             )}
-          </div>
-        </div>
+          </div>        </div>
       </div>
     </AgentLayout>
+    </AgentDashboardErrorBoundary>
   );
 }
 
-// Correctly wrap the component with withAuth
-const ProtectedAgentDashboard = withAuth({ role: 'agent' })(AgentDashboard);
+// Correctly wrap the component with withAgentAuth
+const ProtectedAgentDashboard = withAgentAuth(AgentDashboard);
 
 // Fix the getServerSideProps function to properly return props
 export const getServerSideProps = async (context) => {

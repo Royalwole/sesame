@@ -49,6 +49,20 @@ export default function Home() {
     },
   ];
 
+  // Ensure any price displays use the correct currency
+  // FROM: <FiDollarSign className="inline-block mr-1" />
+  // TO:
+  // <span className="inline-block mr-1 font-medium">₦</span>
+
+  // Also ensure any mock data or sample listings use proper Naira formatting
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      maximumFractionDigits: 0,
+    }).format(price);
+  };
+
   return (
     <>
       <main className="min-h-screen pt-16">
@@ -73,11 +87,13 @@ export default function Home() {
               <p className="text-xl text-gray-200 mb-8">
                 Topdial.ng connects you with the best properties across Nigeria.
                 Buy, rent, or lease with confidence.
-              </p>
-
+              </p>{" "}
               {/* Search Box */}
               <div className="bg-white p-4 rounded-lg shadow-lg">
-                <form className="flex flex-wrap gap-2">
+                <form
+                  className="flex flex-wrap gap-2"
+                  onSubmit={(e) => e.preventDefault()}
+                >
                   <div className="flex-1 min-w-[200px]">
                     <select className="w-full p-3 border rounded-md">
                       <option value="">Property Type</option>

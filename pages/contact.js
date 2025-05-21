@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FiMapPin, FiPhone, FiMail, FiSend, FiClock } from "react-icons/fi";
 import toast from "react-hot-toast";
+import { preventAccidentalSubmit } from "../lib/form-submission-utils";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -23,6 +24,11 @@ export default function ContactPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Prevent accidental form submissions like clicking in textboxes
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
 
     // Form validation
     if (!formData.name || !formData.email || !formData.message) {

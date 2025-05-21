@@ -1,10 +1,14 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { checkDBConnection, connectDB } from "../lib/db";
-import { loadEnvConfig } from "../lib/env-loader";
 import { useHydration } from '../lib/useHydration';
 
 // Check if running on client or server
 const isServer = typeof window === 'undefined';
+
+// Import the browser-safe version in client context
+const { clientSafeEnv } = isServer 
+  ? require("../lib/env-loader") 
+  : require("../lib/env-loader.browser");
 
 // Create the context
 const DatabaseContext = createContext({
@@ -23,12 +27,9 @@ const CONNECTION_STATUS = {
 
 // Provider component
 export function DatabaseProvider({ children }) {
-  // Move loadEnvConfig call here
-  useEffect(() => {
-    if (isServer) {
-      loadEnvConfig();
-    }
-  }, []);
+  // No need to call loadEnvConfig here anymore
+  // Environment variables are loaded on the server automatically
+  // And clientSafeEnv is used for client-side
 
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);

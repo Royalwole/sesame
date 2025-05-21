@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { withAgentAuth } from "../../../../../lib/withAuth";
+import {
+  withAgentAuth,
+  withAgentAuthGetServerSideProps,
+} from "../../../../../lib/withAuth";
 import Layout from "../../../../../components/layout/AgentLayout";
 import Head from "next/head";
 import Link from "next/link";
@@ -9,8 +12,10 @@ import CreateListingForm from "../../../../../components/listings/CreateListingF
 import LoadingSpinner from "../../../../../components/ui/LoadingSpinner";
 import { getListingById } from "../../../../../lib/listing-api";
 import toast from "react-hot-toast";
+// Import form submission prevention utility
+import { preventAccidentalSubmit } from "../../../../../lib/form-submission-utils";
 
-export default function EditListing() {
+function EditListing() {
   const router = useRouter();
   const { id } = router.query;
   const [listing, setListing] = useState(null);
@@ -210,6 +215,7 @@ export default function EditListing() {
   // Fixed handleUpdateListing function
   const handleUpdateListing = async (formData, imageFiles) => {
     try {
+      // This function is called from CreateListingForm which already has preventAccidentalSubmit
       setSubmitting(true);
 
       // Basic validation
@@ -415,4 +421,7 @@ export default function EditListing() {
 }
 
 // Protect this page with agent auth
-export const getServerSideProps = withAgentAuth();
+export const getServerSideProps = withAgentAuthGetServerSideProps();
+
+// Export the wrapped component
+export default withAgentAuth(EditListing);

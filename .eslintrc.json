@@ -1,9 +1,5 @@
 {
-  "extends": [
-    "next/core-web-vitals",
-    "eslint:recommended",
-    "plugin:react/recommended"
-  ],
+  "extends": ["next/core-web-vitals", "eslint:recommended", "plugin:react/recommended"],
   "rules": {
     "react/prop-types": "warn",
     "react/react-in-jsx-scope": "off",
@@ -16,7 +12,8 @@
       }
     ],
     "react/no-unescaped-entities": "off",
-    "react/jsx-key": "error"
+    "react/jsx-key": "error",
+    "no-duplicate-imports": "error"
   },
   "settings": {
     "react": {

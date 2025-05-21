@@ -3,6 +3,7 @@ import { FiHome, FiKey, FiClock, FiTag, FiDollarSign } from "react-icons/fi";
 import toast from "react-hot-toast";
 import ImageUpload from "./ImageUpload";
 import { LuxuryInput, LuxuryTextarea } from "../ui/form-elements";
+import { preventAccidentalSubmit } from "../../lib/form-submission-utils";
 
 // Define refined property types without duplications
 const PROPERTY_TYPES = [
@@ -248,6 +249,11 @@ export default function CreateListingForm({
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Prevent accidental submissions from input fields
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
+
     try {
       // Basic validation
       if (!formData.title || !formData.price || !formData.address) {
@@ -271,8 +277,8 @@ export default function CreateListingForm({
         features: Array.isArray(formData.features)
           ? formData.features
           : typeof formData.features === "string"
-          ? formData.features.split(",").map((f) => f.trim())
-          : [],
+            ? formData.features.split(",").map((f) => f.trim())
+            : [],
         status: formData.status || "published",
       };
 
@@ -429,7 +435,9 @@ export default function CreateListingForm({
             error={touched.price && errors.price}
             required={true}
             type="number"
-            icon={<FiDollarSign className="text-gray-400" />}
+            icon={
+              <span className="font-semibold text-gray-400 text-lg">₦</span>
+            }
           />
 
           {/* Bedrooms & Bathrooms */}

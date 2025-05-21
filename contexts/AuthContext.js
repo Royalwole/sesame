@@ -253,27 +253,37 @@ export function AuthProvider({ children }) {
       syncUserData();
     }
   }, [isSignedIn, isLoaded, isConnected, syncUserData]);
-
   // Derived auth state using the role management utility functions
-  const isAuthenticated = !!isSignedIn;
-  const isAdmin = checkIsAdmin(dbUser);
-  const isAgent = checkIsAnyAgent(dbUser);
-  const isApprovedAgent = checkIsApprovedAgent(dbUser);
-  const isPendingAgent = checkIsPendingAgent(dbUser);
-  const hasError = !!error;
+  // More robust authentication check using multiple signals
+  const isAuthenticated = !!isSignedIn && !!user;
 
+  // Always get roles directly from publicMetadata when possible
+  const userMetadata = user?.publicMetadata || {};
+  const directRole = userMetadata.role || null;
+  const directApproved = userMetadata.approved === true;
+
+  // Use direct role checks for dashboard routing to avoid inconsistencies
+  const isAdmin =
+    directRole === "admin" || (directRole === "super_admin" && directApproved);
+  const isApprovedAgent = directRole === "agent" && directApproved;
+  const isPendingAgent = directRole === "agent_pending";
+  const isAgent = isApprovedAgent || isPendingAgent;
+
+  const hasError = !!error;
   // Provide all auth values
   const authContextValue = {
     // User state
     user, // Raw clerk user
     dbUser, // Database user
-    isAuthenticated, // Is signed in
+    isSignedIn, // Directly from Clerk
+    isAuthenticated, // Robust check combining signals
 
     // Role helpers
     isAdmin,
     isAgent,
     isApprovedAgent,
     isPendingAgent,
+    role: directRole, // Expose direct role for consistent checking
 
     // Status information
     isLoading,
@@ -285,6 +295,11 @@ export function AuthProvider({ children }) {
     // Actions
     syncUserData,
     signOut: handleSignOut,
+    clearUserCache: () => {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(USER_CACHE_CONFIG.storageKey);
+      }
+    },
   };
 
   return (

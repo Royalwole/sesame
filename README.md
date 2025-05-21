@@ -115,7 +115,7 @@ topdial-ng/
 │   │   ├── Header.js    # JSX for navigation header
 │   │   └── Footer.js    # JSX for footer section
 │   ├── listings/        # Listing-related UI components
-│   │   ├── ListingCard.js     # JSX for individual listing display
+│   │   ├── ListingCard.jsx    # JSX for individual listing display
 │   │   ├── ListingDetail.js   # JSX for detailed listing view
 │   │   ├── CreateListingForm.js # JSX for listing creation form
 │   │   └── ImageUpload.js     # JSX for image upload UI

@@ -3,6 +3,7 @@ import { FiArrowRight, FiRefreshCw } from "react-icons/fi";
 import Link from "next/link";
 import ListingMap from "./ListingMap";
 import { toast } from "react-hot-toast"; // Assuming toast is available in the project
+import { fetchWithTimeout } from "../../lib/fetch-with-timeout";
 
 /**
  * Display similar property listings based on the current listing
@@ -27,106 +28,66 @@ export default function SimilarListings({
   const TIMEOUT_MS = 10000; // 10 second timeout
 
   const fetchSimilarListings = useCallback(async () => {
-    if (!currentListingId) return;
-
-    // Clean up any previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    if (timeoutIdRef.current) {
-      clearTimeout(timeoutIdRef.current);
-    }
-
     setLoading(true);
-    if (retryCount === 0) {
-      setError(null);
-    }
+    setError(null);
 
-    try {
-      // Calculate price range if price is provided
-      let minPrice, maxPrice;
-      if (price) {
-        minPrice = Math.floor(price * (1 - priceRange));
-        maxPrice = Math.ceil(price * (1 + priceRange));
-      }
+    const retryOptions = { maxRetries: 2, baseDelay: 1000 };
+    let attempt = 0;
 
-      // Build query params
-      const params = new URLSearchParams();
-      params.append("limit", String(limit));
-      params.append("excludeId", currentListingId);
-
-      if (propertyType) params.append("propertyType", propertyType);
-      if (city) params.append("city", city);
-      if (state) params.append("state", state);
-      if (minPrice) params.append("minPrice", minPrice.toString());
-      if (maxPrice) params.append("maxPrice", maxPrice.toString());
-
-      // Add cache-busting parameter if retrying
-      if (retryCount > 0) {
-        params.append("_", Date.now().toString());
-      }
-
-      // Fetch similar listings with timeout and abort control
-      abortControllerRef.current = new AbortController();
-      timeoutIdRef.current = setTimeout(() => {
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-        }
-      }, TIMEOUT_MS);
-
+    while (attempt <= retryOptions.maxRetries) {
       try {
-        const response = await fetch(
-          `/api/listings/similar?${params.toString()}`,
-          { signal: abortControllerRef.current.signal }
+        // Calculate price range if price is provided
+        let minPrice, maxPrice;
+        if (price) {
+          minPrice = Math.floor(price * (1 - priceRange));
+          maxPrice = Math.ceil(price * (1 + priceRange));
+        }
+
+        // Build query params
+        const params = new URLSearchParams({
+          id: currentListingId,
+          location: city,
+          propertyType: propertyType,
+          limit: limit,
+        });
+
+        const response = await fetchWithTimeout(
+          `/api/listings/similar?${params}`,
+          {
+            headers: {
+              "Cache-Control": "no-cache",
+              Pragma: "no-cache",
+            },
+          },
+          TIMEOUT_MS
         );
 
-        clearTimeout(timeoutIdRef.current);
-
         if (!response.ok) {
-          throw new Error(
-            `Error fetching similar listings (${response.status})`
-          );
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
-
-        if (data.success) {
-          setListings(data.listings || []);
-          // Reset retry count on success
-          if (retryCount > 0) setRetryCount(0);
-        } else {
-          throw new Error(data.message || "Failed to load similar listings");
-        }
+        setListings(data.listings || []);
+        setLoading(false);
+        return; // Success - exit retry loop
       } catch (err) {
-        // Only handle AbortError specifically to avoid duplicate error messages
-        if (err.name === "AbortError") {
-          throw new Error("Request timed out. Please try again.");
-        }
-        throw err;
-      }
-    } catch (err) {
-      console.error("SimilarListings error:", err);
-      setError(err.message || "Failed to load similar listings");
+        attempt++;
+        console.warn(`Similar listings fetch attempt ${attempt} failed:`, err);
 
-      // Auto retry once if it's the first failure
-      if (retryCount === 0) {
-        setTimeout(() => {
-          setRetryCount(1);
-        }, 2000);
+        if (attempt > retryOptions.maxRetries) {
+          setError("Unable to load similar listings");
+          setListings([]);
+          setLoading(false);
+          return;
+        }
+
+        // Wait before retry with exponential backoff
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryOptions.baseDelay * Math.pow(2, attempt - 1))
+        );
       }
-    } finally {
-      setLoading(false);
     }
-  }, [
-    currentListingId,
-    propertyType,
-    city,
-    state,
-    price,
-    priceRange,
-    limit,
-    retryCount,
-  ]);
+  }, [currentListingId, propertyType, city, price, priceRange, limit]);
 
   useEffect(() => {
     fetchSimilarListings();
@@ -196,7 +157,9 @@ export default function SimilarListings({
             aria-label="Retry loading similar listings"
           >
             <FiRefreshCw
-              className={`mr-1 ${retryCount > 0 && retryCount < MAX_RETRIES ? "animate-spin" : ""}`}
+              className={`mr-1 ${
+                retryCount > 0 && retryCount < MAX_RETRIES ? "animate-spin" : ""
+              }`}
             />
             {retryCount >= MAX_RETRIES ? "Too many attempts" : "Retry"}
           </button>
@@ -210,9 +173,11 @@ export default function SimilarListings({
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-semibold">Similar Properties</h2>
         <Link
-          href={`/listings?propertyType=${encodeURIComponent(propertyType || "")}&city=${encodeURIComponent(
-            city || ""
-          )}&state=${encodeURIComponent(state || "")}`}
+          href={`/listings?propertyType=${encodeURIComponent(
+            propertyType || ""
+          )}&city=${encodeURIComponent(city || "")}&state=${encodeURIComponent(
+            state || ""
+          )}`}
           className="text-wine hover:text-wine/80 flex items-center text-sm font-medium"
           aria-label="View more similar properties"
         >

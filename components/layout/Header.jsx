@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { useAuth } from "../../contexts/AuthContext";
+import { preventAccidentalSubmit } from "../../lib/form-submission-utils";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -125,6 +126,11 @@ export default function Header() {
   // Handle search submission
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    
+    // Prevent accidental form submissions
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
 
     const queryParams = new URLSearchParams();
 

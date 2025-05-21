@@ -28,40 +28,45 @@ const UserSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-    },
-    firstName: {
-      type: String,
-      required: true,
-    },
-    lastName: {
-      type: String,
+      index: true,
     },
     email: {
       type: String,
-      required: true,
+      required: [true, "Email is required"],
       unique: true,
+      match: [
+        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+        "Please enter a valid email",
+      ],
     },
+    firstName: String,
+    lastName: String,
+    fullName: String,
+    profileImage: String,
     role: {
       type: String,
-      enum: [
-        "user",
-        "agent",
-        "agent_pending",
-        "admin",
-        "super_admin",
-        "support",
-      ],
-      default: "user",
+      enum: ["user", "agent", "admin"],
+      default: "agent",
+    },
+    bio: String,
+    phone: String,
+    address: String,
+    company: String,
+    website: String,
+    lastSyncedAt: Date,
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
     },
     // Approval status for agents
     approved: {
       type: Boolean,
       default: false,
     },
-    phone: String,
-    bio: String,
-    profileImage: String,
-
     // Enhanced fields to store Clerk data
     externalAccounts: [
       {

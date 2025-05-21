@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
-import { withAgentAuth } from "../../../../lib/withAuth";
+import {
+  withAgentAuth,
+  withAgentAuthGetServerSideProps,
+} from "../../../../lib/withAuth";
 import Layout from "../../../../components/layout/AgentLayout";
 import Head from "next/head";
 import Link from "next/link";
@@ -9,7 +12,7 @@ import LoadingSpinner from "../../../../components/ui/LoadingSpinner";
 import { getListingById } from "../../../../lib/listing-api";
 import toast from "react-hot-toast";
 
-export default function ViewListing() {
+function ViewListing() {
   const router = useRouter();
   const { id } = router.query;
   const [listing, setListing] = useState(null);
@@ -401,4 +404,7 @@ export default function ViewListing() {
 }
 
 // Protect this page with agent auth
-export const getServerSideProps = withAgentAuth();
+export const getServerSideProps = withAgentAuthGetServerSideProps();
+
+// Export the wrapped component
+export default withAgentAuth(ViewListing);

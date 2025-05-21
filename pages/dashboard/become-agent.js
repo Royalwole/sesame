@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { withAuth } from "../../lib/withAuth";
+import { withAuth, withAuthGetServerSideProps } from "../../lib/withAuth";
 import { useAuth } from "../../contexts/AuthContext";
 import toast from "react-hot-toast";
 import { FiArrowLeft, FiSend } from "react-icons/fi";
 import Link from "next/link";
 import ImageUpload from "../../components/listings/ImageUpload";
+import { preventAccidentalSubmit } from "../../lib/form-submission-utils";
 
 function BecomeAgent() {
   const router = useRouter();
@@ -41,6 +42,11 @@ function BecomeAgent() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Prevent accidental form submissions
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
 
     if (!formData.agreeToTerms) {
       toast.error("You must agree to the terms and conditions");
@@ -440,6 +446,7 @@ function BecomeAgent() {
 }
 
 // Protect this page with authentication
-export const getServerSideProps = withAuth();
+export const getServerSideProps = withAuthGetServerSideProps();
 
-export default BecomeAgent;
+// Export the component wrapped with authentication
+export default withAuth()(BecomeAgent);

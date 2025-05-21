@@ -40,7 +40,6 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
   const [totalListings, setTotalListings] = useState(0);
   const [filters, setFilters] = useState({});
   const isHydrated = useHydration();
-
   // Fetch listings with proper hydration handling
   const fetchListings = useCallback(async () => {
     if (!isHydrated) return;
@@ -50,19 +49,41 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
       setError(null);
 
       const queryParams = new URLSearchParams(filters).toString();
-      const response = await fetch(`/api/listings?${queryParams}`);
+      // Use the enhanced fetch method from listing-api-wrapper
+      const { fetchWithTimeout } = await import('../lib/fetch-with-timeout');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+      
+      const response = await fetchWithTimeout(`/api/listings?${queryParams}`, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'X-Request-Source': 'listings-context',
+        },
+        signal: controller.signal
+      }, 15000);
+      
+      clearTimeout(timeoutId);
+      
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.message || 'Failed to fetch listings');
       }
 
-      setListings(data.listings);
-      setTotalListings(data.total);
+      // Ensure we always have valid arrays
+      const safeListings = Array.isArray(data.listings) ? data.listings : [];
+      setListings(safeListings);
+      setTotalListings(data.total || safeListings.length);
     } catch (err) {
-      setError(err.message);
+      console.error('[ListingsContext] Error fetching listings:', err);
+      setError(err.message || 'Failed to load listings');
       setListings([]);
       setTotalListings(0);
+      
+      // Show user-friendly error message
+      toast.error('Could not load listings. Please try again later.');
     } finally {
       setIsLoading(false);
     }
@@ -74,7 +95,6 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
       fetchListings();
     }
   }, [fetchListings, isHydrated]);
-
   // Handle image upload
   const uploadImages = async (files, folder = 'listings') => {
     try {
@@ -84,10 +104,22 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
       });
       formData.append('folder', folder);
 
-      const response = await fetch('/api/listings/upload-images', {
+      // Add upload identifier to help with debugging
+      formData.append('uploadId', `upload-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`);
+
+      // Use enhanced fetch with timeout
+      const { fetchWithTimeout } = await import('../lib/fetch-with-timeout');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout for uploads
+      
+      const response = await fetchWithTimeout('/api/listings/upload-images', {
         method: 'POST',
-        body: formData
-      });
+        body: formData,
+        signal: controller.signal
+      }, 30000);
+      
+      clearTimeout(timeoutId);
 
       const data = await response.json();
       if (!data.success) {
@@ -97,16 +129,43 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
       return data.images;
     } catch (error) {
       console.error('Error uploading images:', error);
+      // Show user-friendly error message
+      toast.error(`Failed to upload images: ${error.message || 'Network error'}`);
       throw error;
     }
   };
-
   // Handle image deletion
   const deleteImage = async (imagePath) => {
+    if (!imagePath) {
+      console.error('No image path provided for deletion');
+      return false;
+    }
+    
     try {
-      const response = await fetch(`/api/listings/delete-image?path=${encodeURIComponent(imagePath)}`, {
-        method: 'DELETE'
-      });
+      // Add deletion ID for tracking issues
+      const deletionId = `delete-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      const encodedPath = encodeURIComponent(imagePath);
+      
+      // Use enhanced fetch with timeout
+      const { fetchWithTimeout } = await import('../lib/fetch-with-timeout');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+      
+      const response = await fetchWithTimeout(
+        `/api/listings/delete-image?path=${encodedPath}&deletionId=${deletionId}`, 
+        {
+          method: 'DELETE',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'X-Deletion-ID': deletionId
+          },
+          signal: controller.signal
+        }, 
+        15000
+      );
+      
+      clearTimeout(timeoutId);
 
       const data = await response.json();
       if (!data.success) {
@@ -116,22 +175,47 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
       return true;
     } catch (error) {
       console.error('Error deleting image:', error);
-      throw error;
+      // Show user-friendly error message
+      toast.error(`Failed to delete image: ${error.message || 'Network error'}`);
+      return false;
     }
   };
-
   // Update listing with new images
   const updateListingImages = async (listingId, newImages, existingImages = []) => {
+    if (!listingId) {
+      console.error('No listing ID provided for image update');
+      toast.error('Cannot update images: Missing listing information');
+      return null;
+    }
+    
     try {
-      const response = await fetch(`/api/listings/${listingId}`, {
+      // Add update ID for tracking issues
+      const updateId = `update-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      
+      // Ensure we have arrays to work with
+      const safeNewImages = Array.isArray(newImages) ? newImages : [];
+      const safeExistingImages = Array.isArray(existingImages) ? existingImages : [];
+      
+      // Use enhanced fetch with timeout
+      const { fetchWithTimeout } = await import('../lib/fetch-with-timeout');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+      
+      const response = await fetchWithTimeout(`/api/listings/${listingId}`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Update-ID': updateId
         },
         body: JSON.stringify({
-          images: [...existingImages, ...newImages]
-        })
-      });
+          images: [...safeExistingImages, ...safeNewImages],
+          updateId
+        }),
+        signal: controller.signal
+      }, 15000);
+      
+      clearTimeout(timeoutId);
 
       const data = await response.json();
       if (!data.success) {
@@ -141,7 +225,9 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
       return data.listing;
     } catch (error) {
       console.error('Error updating listing images:', error);
-      throw error;
+      // Show user-friendly error message
+      toast.error(`Failed to update listing images: ${error.message || 'Network error'}`);
+      return null;
     }
   };
 

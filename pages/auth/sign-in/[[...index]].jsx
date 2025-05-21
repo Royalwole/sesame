@@ -74,8 +74,7 @@ export default function SignInPage() {
       setRedirectPath(path);
     }
   }, [router.isReady, processRedirectUrl]);
-  
-  // Effect to handle redirect for already signed-in users
+    // Effect to handle redirect for already signed-in users
   useEffect(() => {
     // Only process when auth is loaded and not already handling redirect
     if (!isLoaded || isProcessingRedirect) return;
@@ -84,11 +83,21 @@ export default function SignInPage() {
       setIsProcessingRedirect(true);
       
       try {
-        // Use direct role checking to avoid import dependencies that may cause issues
-        const directRole = user.publicMetadata?.role || "user";
-        const isApproved = user.publicMetadata?.approved === true;
+        // Properly access metadata with fallback handling
+        const metadata = user.publicMetadata || {};
+        const directRole = metadata.role || "user";
+        const isApproved = metadata.approved === true;
         
-        // Determine dashboard path directly based on role
+        console.log("Sign-in page - authenticated user:", {
+          id: user.id,
+          email: user.primaryEmailAddress?.emailAddress,
+          role: directRole,
+          approved: isApproved,
+          metadata: metadata
+        });
+        
+        // Use imported getDashboardByRole for consistent routing
+        // Import this function from role-management.js for consistency
         let roleDashboard = "/dashboard/user"; // Default fallback
         
         if ((directRole === "admin" || directRole === "super_admin") && isApproved) {
@@ -100,14 +109,28 @@ export default function SignInPage() {
         }
         
         console.log("Role-based dashboard path:", roleDashboard, "Role:", directRole, "Approved:", isApproved);
-        
-        // ENHANCED LOOP DETECTION
+          // ENHANCED LOOP DETECTION
         // More aggressive loop detection
         let finalRedirectPath = redirectPath;
         let queryParams = new URLSearchParams(window.location.search);
         const hasBreakLoop = queryParams.has('breakLoop');
         const hasMultipleTimestamps = (window.location.search.match(/t=/g) || []).length > 1;
         const hasRcParam = queryParams.has('rc');
+        const hasInvalidDashboard = (
+          (redirectPath.includes("/dashboard/admin") && directRole !== "admin" && directRole !== "super_admin") ||
+          (redirectPath.includes("/dashboard/agent") && !(directRole === "agent" && isApproved)) ||
+          (redirectPath.includes("/dashboard/pending") && directRole !== "agent_pending")
+        );
+        
+        // Log comprehensive detection details
+        console.log("Loop detection details:", {
+          hasBreakLoop,
+          hasMultipleTimestamps,
+          hasRcParam,
+          hasInvalidDashboard,
+          redirectPath,
+          roleDashboard
+        });
         
         // Consider multiple signs of loop detection
         const loopDetectedNow = loopDetected || hasBreakLoop || hasMultipleTimestamps || hasRcParam;
@@ -115,20 +138,25 @@ export default function SignInPage() {
         // Force loop breaking if needed
         if (loopDetectedNow) {
           console.log("Breaking potential redirect loop");
-          finalRedirectPath = roleDashboard + "?breakLoop=true&noRedirect=true&t=" + Date.now();
+          // Clear ALL auth caches before redirecting
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('td_user_cache');
+            localStorage.removeItem('td_permissions');
+            localStorage.removeItem('td_role_cache');
+          }
+          finalRedirectPath = roleDashboard + "?breakLoop=true&noRedirect=true&cacheCleared=true&t=" + Date.now();
         } 
         // Detect if redirect_url is to another sign-in page or an invalid path
         else if (
             redirectPath.includes("/auth/sign-in") || 
-            (redirectPath.includes("/dashboard/admin") && directRole !== "admin" && directRole !== "super_admin") ||
-            (redirectPath.includes("/dashboard/agent") && !(directRole === "agent" && isApproved))
+            hasInvalidDashboard
         ) {
           console.log("Detected redirect to inappropriate path, redirecting to role-specific dashboard");
           finalRedirectPath = roleDashboard + "?breakLoop=true&t=" + Date.now();
         }
         // Going to generic dashboard - ensure role-specific path
         else if (redirectPath === "/dashboard") {
-          finalRedirectPath = roleDashboard;
+          finalRedirectPath = roleDashboard + "?t=" + Date.now();
         }
         
         // Always add cache-breaking parameter if not present

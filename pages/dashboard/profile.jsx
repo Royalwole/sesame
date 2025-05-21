@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { FiUser, FiMail, FiPhone, FiSave } from "react-icons/fi";
 import { AuthGuard } from "../../lib/withAuth";
 import Loader from "../../components/utils/Loader";
+import { preventAccidentalSubmit } from "../../lib/form-submission-utils";
 
 function ProfilePage() {
   const { dbUser, isLoading, syncUserData } = useAuth();
@@ -67,6 +68,12 @@ function ProfilePage() {
   // Save profile changes
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Prevent accidental form submissions
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
+    
     setIsSaving(true);
 
     // Make sure email is included in the submission even if the field is disabled

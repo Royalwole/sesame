@@ -11,15 +11,15 @@ import { getPublicListings } from "../../lib/listing-api";
 function ListingsContent() {
   const [showFilters, setShowFilters] = useState(false);
   const { 
-    listings, 
-    loading, 
-    error, 
-    filters, 
-    meta, 
+    listings = [], 
+    loading = false, 
+    error = null, 
+    filters = {}, 
+    meta = { page: 1, pages: 1, total: 0, limit: 12 }, 
     applyFilters, 
     changePage, 
     refreshListings 
-  } = useListings();
+  } = useListings() || {};
 
   const toggleFilters = () => {
     setShowFilters(prev => !prev);
@@ -66,22 +66,20 @@ function ListingsContent() {
       
       {/* Listings grid */}
       <ListingsGrid listings={listings} loading={loading} error={error} />
-      
-      {/* Pagination */}
-      {!loading && !error && listings.length > 0 && meta.pages > 1 && (
+        {/* Pagination */}
+      {!loading && !error && listings.length > 0 && meta && meta.pages > 1 && (
         <div className="mt-8">
           <Pagination
-            currentPage={meta.page}
-            totalPages={meta.pages}
+            currentPage={meta.page || 1}
+            totalPages={meta.pages || 1}
             onPageChange={changePage}
           />
         </div>
       )}
-      
-      {/* Results count */}
-      {!loading && !error && (
+        {/* Results count */}
+      {!loading && !error && meta && (
         <div className="mt-4 text-sm text-gray-500">
-          Showing {listings.length} of {meta.total} properties
+          Showing {listings.length} of {meta.total || 0} properties
         </div>
       )}
     </div>

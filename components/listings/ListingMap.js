@@ -1,7 +1,8 @@
+// filepath: c:\Users\HomePC\Desktop\topdial\components\listings\ListingMap.js
 import React from "react";
 import Link from "next/link";
-// Standard import path for Feather icons
-import { FiHome, FiMapPin, FiBed, FiBath } from "react-icons/fi";
+// Standard import for icons
+import { FiHome, FiMapPin, FiBed, FiDroplet, FiClock } from "react-icons/fi";
 
 /**
  * Functional component that maps over a list of listings
@@ -38,79 +39,107 @@ export default function ListingMap({
             <Link href={`/listings/${listing._id}`} className="block">
               {/* Listing image */}
               <div className="relative aspect-[4/3] bg-gray-200">
-                {listing.images && listing.images[0] ? (
+                {listing.images && listing.images.length > 0 ? (
                   <img
-                    src={listing.images[0].url}
+                    src={
+                      typeof listing.images[0] === "string"
+                        ? listing.images[0]
+                        : listing.images[0].url
+                    }
                     alt={listing.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover transition-transform hover:scale-105"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <FiHome className="text-gray-400 text-4xl" />
                   </div>
-                )}
-
+                )}{" "}
                 {/* Status badge */}
                 {listing.status && (
-                  <div className="absolute top-2 right-2">
-                    <span
-                      className={`inline-block px-2 py-1 text-xs font-semibold rounded-md ${
-                        listing.status === "published"
-                          ? "bg-green-100 text-green-800"
-                          : listing.status === "pending"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {listing.status === "published"
-                        ? "Active"
+                  <div
+                    className={`absolute top-2 right-2 ${
+                      listing.status === "published"
+                        ? "bg-green-500"
                         : listing.status === "pending"
-                          ? "Pending"
-                          : listing.status}
-                    </span>
+                          ? "bg-orange-500"
+                          : listing.status === "sold"
+                            ? "bg-red-500"
+                            : listing.status === "under_contract"
+                              ? "bg-yellow-500"
+                              : "bg-gray-500"
+                    } text-white px-2 py-1 rounded text-sm`}
+                  >
+                    {listing.status === "published"
+                      ? "For Sale"
+                      : listing.status === "pending"
+                        ? "Pending"
+                        : listing.status === "sold"
+                          ? "Sold"
+                          : listing.status === "under_contract"
+                            ? "Under Contract"
+                            : listing.status}
                   </div>
                 )}
-              </div>
-
-              {/* Listing details */}
-              <div className="p-4">
-                <h3 className="font-semibold text-lg mb-1 line-clamp-1">
-                  {listing.title}
-                </h3>
-
-                {/* Price */}
+                {/* "New" badge for recent listings */}
+                {listing.createdAt &&
+                  new Date() - new Date(listing.createdAt) <
+                    7 * 24 * 60 * 60 * 1000 && (
+                    <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-medium flex items-center">
+                      <FiClock size={12} className="mr-1" />
+                      New
+                    </div>
+                  )}
+                {/* Price overlay */}
                 {showPrice && (
-                  <p className="text-wine font-bold mb-2">
+                  <div className="absolute bottom-0 left-0 bg-blue-600 text-white px-3 py-1 font-medium">
                     ₦{listing.price?.toLocaleString() || 0}
                     {listing.listingType === "rent" && (
-                      <span className="text-sm font-normal text-gray-500">
+                      <span className="text-sm font-normal text-white ml-1">
                         /month
                       </span>
                     )}
-                  </p>
+                  </div>
+                )}{" "}
+              </div>
+              {/* Listing details */}
+              <div className="p-4">
+                <h3 className="font-medium text-lg text-gray-900 line-clamp-1">
+                  {listing.title}
+                </h3>
+                {/* Location */}
+                {showLocation && listing.address && (
+                  <div className="flex items-center text-gray-600 text-sm mb-3 mt-2">
+                    <FiMapPin
+                      className="mr-1 flex-shrink-0"
+                      size={14}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{listing.address}</span>
+                  </div>
                 )}
 
                 {/* Features */}
                 {!compact && (
-                  <div className="flex items-center space-x-4 mb-2 text-sm text-gray-500">
-                    {listing.bedrooms !== undefined && (
-                      <span className="flex items-center">
-                        <FiBed className="mr-1" /> {listing.bedrooms}
-                      </span>
+                  <div className="flex justify-between text-sm text-gray-500 border-t pt-3">
+                    {listing.bedrooms !== undefined && listing.bedrooms > 0 && (
+                      <div className="flex items-center">
+                        <FiBed className="mr-1" aria-hidden="true" />
+                        <span>
+                          {listing.bedrooms}{" "}
+                          {listing.bedrooms === 1 ? "bed" : "beds"}
+                        </span>
+                      </div>
                     )}
-                    {listing.bathrooms !== undefined && (
-                      <span className="flex items-center">
-                        <FiBath className="mr-1" /> {listing.bathrooms}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Location */}
-                {showLocation && listing.address && (
-                  <div className="flex items-start text-sm text-gray-500">
-                    <FiMapPin className="mr-1 mt-1 flex-shrink-0" />
-                    <span className="line-clamp-1">{listing.address}</span>
+                    {listing.bathrooms !== undefined &&
+                      listing.bathrooms > 0 && (
+                        <div className="flex items-center">
+                          <FiDroplet className="mr-1" aria-hidden="true" />
+                          <span>
+                            {listing.bathrooms}{" "}
+                            {listing.bathrooms === 1 ? "bath" : "baths"}
+                          </span>
+                        </div>
+                      )}{" "}
                   </div>
                 )}
               </div>

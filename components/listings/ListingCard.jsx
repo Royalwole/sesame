@@ -1,14 +1,14 @@
 import React, { memo, useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import PropTypes from "prop-types";
 import { useInView } from "react-intersection-observer";
 // Standard import path for Feather icons
-import { FiHome, FiBed, FiBath, FiSquare, FiHeart, FiMapPin, FiClock, FiAlertTriangle, FiImage } from "react-icons/fi";
+import { FiHome, FiBed, FiBath, FiSquare, FiMapPin, FiClock, FiAlertTriangle, FiImage } from "react-icons/fi";
 
 // Cache status constants outside component to prevent re-creation
 const STATUS_STYLES = Object.freeze({
   for_sale: "bg-green-500",
+  published: "bg-green-500", // Add alias for 'published' status
   sold: "bg-red-500",
   under_contract: "bg-yellow-500",
   pending: "bg-orange-500",
@@ -17,6 +17,7 @@ const STATUS_STYLES = Object.freeze({
 
 const STATUS_TEXT = Object.freeze({
   for_sale: "For Sale",
+  published: "For Sale", // Add alias for 'published' status
   sold: "Sold",
   under_contract: "Under Contract",
   pending: "Pending",
@@ -29,9 +30,9 @@ const FALLBACK_IMAGE_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // Global image error tracking to identify problematic images across the site
 const problematicImages = new Set();
 
-// Improved image URL utility with better error handling and fallbacks
+// Enhanced image URL utility with stricter error handling and guaranteed fallbacks
 const getImageUrl = (imagePath, fallbackIndex = 0) => {
-  if (!imagePath) return null;
+  if (!imagePath) return FALLBACK_IMAGE_DATA;
 
   // Check if this image was previously problematic
   if (problematicImages.has(imagePath) && fallbackIndex === 0) {
@@ -43,7 +44,7 @@ const getImageUrl = (imagePath, fallbackIndex = 0) => {
   const baseUrl = process.env.NEXT_PUBLIC_BLOB_BASE_URL?.trim();
   if (!baseUrl) {
     console.warn('NEXT_PUBLIC_BLOB_BASE_URL is not configured');
-    return imagePath; // Return direct path as fallback
+    return imagePath || FALLBACK_IMAGE_DATA; // Return direct path as fallback
   }
 
   try {
@@ -70,8 +71,8 @@ const getImageUrl = (imagePath, fallbackIndex = 0) => {
   } catch (err) {
     console.error('Error constructing image URL:', err);
     
-    // Return the original path if transformation fails
-    return imagePath;
+    // Return the original path if transformation fails or fallback to placeholder
+    return imagePath || FALLBACK_IMAGE_DATA;
   }
 };
 
@@ -88,7 +89,9 @@ const getFallbackImageUrl = (images = [], currentIndex = 0) => {
   return { url: null, index: -1 };
 };
 
-const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
+// Define component with React.memo for performance
+// Simple function component definition
+function ListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
   const [imageError, setImageError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [retryAttempt, setRetryAttempt] = useState(0);
@@ -175,12 +178,19 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
     }
   }, [_id, title, onClick]);
 
-  // Memoize formatted values
-  const formattedPrice = useMemo(() => new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 0,
-  }).format(price), [price]);
+  // Memoize formatted values with explicit naira symbol (₦)
+  const formattedPrice = useMemo(() => {
+    try {
+      return new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        maximumFractionDigits: 0,
+      }).format(price);
+    } catch (err) {
+      console.warn('Error formatting price, using fallback', err);
+      return `₦${price.toLocaleString()}`;
+    }
+  }, [price]);
 
   const locationText = useMemo(() => 
     location?.city && location?.state
@@ -188,16 +198,16 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
       : location?.city || location?.state || "Unknown Location",
     [location?.city, location?.state]
   );
-
-  // Get primary image URL with fallback mechanism
+  // Get primary image URL with robust fallback mechanism
   const hasValidImages = Array.isArray(images) && images.length > 0;
   const currentImage = hasValidImages && currentImageIndex >= 0 && currentImageIndex < images.length 
     ? images[currentImageIndex] 
     : null;
     
+  // Ensure imageUrl is never undefined to prevent rendering errors
   const imageUrl = !imageError && currentImage 
     ? getImageUrl(currentImage, retryAttempt) 
-    : null;
+    : FALLBACK_IMAGE_DATA;
 
   // Format relative time for recent listings
   const isRecentListing = useMemo(() => {
@@ -212,8 +222,8 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
     }
   }, [createdAt]);
 
-  // Dynamic property icon based on property type
-  const PropertyIcon = useMemo(() => {
+  // Generate property icon based on property type
+  const propertyIcon = useMemo(() => {
     switch (propertyType?.toLowerCase()) {
       case 'commercial': 
         return <FiSquare size={48} className="text-gray-400" aria-hidden="true" />;
@@ -280,41 +290,36 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
       case "large": return ""; 
       default: return "";
     }
-  }, [size]);
-
-  return (
-    <Link href={`/listings/${_id}`} passHref>
+  }, [size]);  return (
+    <Link 
+      href={`/listings/${_id}`} 
+      className={`block h-full bg-white rounded-lg shadow-sm overflow-hidden transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-blue-500 ${cardStyles}`}
+      onClick={handleClick}
+    >
       <article
         ref={ref}
-        className={`block h-full bg-white rounded-lg shadow-sm overflow-hidden transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-blue-500 ${cardStyles}`}
         itemScope
         itemType="http://schema.org/Residence"
-        onClick={handleClick}
-        role="link"
+        role="article"
         tabIndex={0}
         aria-label={`View details for ${title} in ${locationText}`}
       >
-        {/* Image Section with loading state */}
-        <div className={`relative ${imageHeight} bg-gray-100 overflow-hidden`}>
-          {(imageUrl && inView) ? (
+        {/* Image Section with loading state */}        <div className={`relative ${imageHeight} bg-gray-100 overflow-hidden`}>
+          {inView ? (
             <>
               {isLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
                   <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
-              <Image
-                src={imageUrl}
+                {/* Standard img tag instead of Next.js Image for reliability */}
+              <img
+                src={imageUrl || FALLBACK_IMAGE_DATA}
                 alt={title}
-                fill
-                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                className={`object-cover transition-transform hover:scale-105 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+                className={`w-full h-full object-cover transition-transform hover:scale-105 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
                 onError={handleImageError}
                 onLoad={handleImageLoad}
                 loading="lazy"
-                quality={75}
-                placeholder="blur"
-                blurDataURL={FALLBACK_IMAGE_DATA}
                 itemProp="image"
               />
             </>
@@ -327,7 +332,7 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
                   <span className="text-xs text-gray-400">No image available</span>
                 </>
               ) : (
-                PropertyIcon
+                propertyIcon
               )}
             </div>
           )}
@@ -404,18 +409,13 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
                 <FiSquare className="mr-1" aria-hidden="true" />
                 <span>{squareFeet.toLocaleString()} ft²</span>
               </div>
-            )}
-          </div>
+            )}          </div>
         </div>
       </article>
-    </Link>
-  );
-});
+    </Link>  );
+}
 
-// Add displayName for better debugging
-ListingCard.displayName = 'ListingCard';
-
-// Add proper TypeScript-like prop validation
+// Add prop validation
 ListingCard.propTypes = {
   listing: PropTypes.shape({
     _id: PropTypes.string.isRequired,
@@ -448,4 +448,8 @@ ListingCard.defaultProps = {
   size: 'default',
 };
 
-export default ListingCard;
+// Add displayName for better debugging
+ListingCard.displayName = 'ListingCard';
+
+// Export memoized version
+export default memo(ListingCard);

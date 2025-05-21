@@ -1,274 +1,138 @@
 import { connectDB, disconnectDB } from "../../../lib/db";
 import Listing from "../../../models/Listing";
 
-// Add mock data for fallback when DB isn't ready
-const MOCK_LISTINGS = [
-  {
-    _id: "mock1",
-    title: "Modern 3 Bedroom Apartment",
-    price: 250000,
-    bedrooms: 3,
-    bathrooms: 2,
-    squareFeet: 1400,
-    location: { city: "Lagos", state: "Lagos" },
-    images: ["/images/sample-property-1.jpg"],
-    type: "apartment",
-    status: "active",
-  },
-  {
-    _id: "mock2",
-    title: "Spacious 4 Bedroom Villa",
-    price: 450000,
-    bedrooms: 4,
-    bathrooms: 3,
-    squareFeet: 2200,
-    location: { city: "Abuja", state: "FCT" },
-    images: ["/images/sample-property-2.jpg"],
-    type: "house",
-    status: "active",
-  },
-  {
-    _id: "mock3",
-    title: "Cozy 2 Bedroom Townhouse",
-    price: 180000,
-    bedrooms: 2,
-    bathrooms: 1,
-    squareFeet: 1100,
-    location: { city: "Port Harcourt", state: "Rivers" },
-    images: ["/images/sample-property-3.jpg"],
-    type: "townhouse",
-    status: "active",
-  },
-];
-
-// Modify handler function to fix response issues
+/**
+ * API endpoint to fetch public listings with robust error handling
+ */
 export default async function handler(req, res) {
-  // Only allow GET requests for public endpoints
+  // Only allow GET requests
   if (req.method !== "GET") {
     return res
       .status(405)
-      .json({ success: false, error: "Method not allowed" });
+      .json({ success: false, message: "Method not allowed" });
   }
+
+  const requestId = `listings_${Math.random().toString(36).substring(2, 10)}`;
+  console.log(`[${requestId}] Processing listings request`, {
+    query: req.query,
+  });
 
   let dbConnection = false;
-  const requestId = `list_${Date.now().toString(36)}`;
-  console.log(`[ListingsAPI:${requestId}] Handling request`);
-
-  // Add CORS headers for development environments
-  if (process.env.NODE_ENV === "development") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  }
+  const startTime = Date.now();
 
   try {
-    // Get pagination parameters with defaults
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
+    // Parse query parameters with defaults
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 12, 50);
     const skip = (page - 1) * limit;
 
-    console.log(`[ListingsAPI:${requestId}] Query params:`, req.query);
-
-    try {
-      console.log(`[ListingsAPI:${requestId}] Connecting to database...`);
-
-      // Add circuit-breaker logic here
-      const connectionPromise = connectDB();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Connection timeout")), 5000)
-      );
-
-      // Race against a timeout to prevent hanging
-      await Promise.race([connectionPromise, timeoutPromise]);
-      dbConnection = true;
-      console.log(`[ListingsAPI:${requestId}] Database connection successful`);
-
-      // Build query with filters
-      try {
-        const baseQuery = { status: "active" };
-
-        // Add filters from query params
-        if (req.query.type) baseQuery.type = req.query.type;
-        if (req.query.city)
-          baseQuery["location.city"] = new RegExp(req.query.city, "i"); // Case insensitive search
-        if (req.query.state)
-          baseQuery["location.state"] = new RegExp(req.query.state, "i"); // Case insensitive search
-        if (req.query.bedrooms)
-          baseQuery.bedrooms = { $gte: parseInt(req.query.bedrooms) };
-        if (req.query.bathrooms)
-          baseQuery.bathrooms = { $gte: parseInt(req.query.bathrooms) };
-
-        // Price filters
-        if (req.query.minPrice) {
-          baseQuery.price = { $gte: parseInt(req.query.minPrice) };
-        }
-        if (req.query.maxPrice) {
-          if (baseQuery.price) {
-            baseQuery.price.$lte = parseInt(req.query.maxPrice);
-          } else {
-            baseQuery.price = { $lte: parseInt(req.query.maxPrice) };
-          }
-        }
-
-        console.log(
-          `[ListingsAPI:${requestId}] Query:`,
-          JSON.stringify(baseQuery)
-        );
-
-        // Use shorter timeouts for database operations
-        const queryTimeout = 3000; // 3 seconds
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Query timeout")), queryTimeout)
-        );
-
-        let total = 0;
-        let listings = [];
-
-        try {
-          // Get count with timeout
-          total = await Promise.race([
-            Listing.countDocuments(baseQuery).exec(),
-            timeoutPromise,
-          ]);
-
-          // Get listings with timeout
-          listings = await Promise.race([
-            Listing.find(baseQuery)
-              .sort({ createdAt: -1 })
-              .skip(skip)
-              .limit(limit)
-              .lean()
-              .exec(),
-            timeoutPromise,
-          ]);
-
-          console.log(
-            `[ListingsAPI:${requestId}] Found ${listings.length} of ${total} listings`
-          );
-        } catch (queryError) {
-          console.error(`[ListingsAPI:${requestId}] Query error:`, queryError);
-
-          // Return mock data on query error
-          console.log(
-            `[ListingsAPI:${requestId}] Using mock data due to query error`
-          );
-          return res.status(200).json({
-            success: true,
-            listings: MOCK_LISTINGS,
-            pagination: {
-              total: MOCK_LISTINGS.length,
-              currentPage: 1,
-              totalPages: 1,
-              limit: MOCK_LISTINGS.length,
-            },
-            message: "Using mock data due to database query timeout",
-            fallback: true,
-          });
-        }
-
-        // Format listings for response
-        const formattedListings = listings.map((listing) => ({
-          _id: listing._id?.toString() || "",
-          title: listing.title || "Untitled Property",
-          price: listing.price || 0,
-          location: listing.location || {},
-          type: listing.type || "",
-          status: listing.status || "",
-          bedrooms: listing.bedrooms || 0,
-          bathrooms: listing.bathrooms || 0,
-          squareFeet: listing.squareFeet || 0,
-          images: Array.isArray(listing.images) ? listing.images : [],
-          createdAt:
-            listing.createdAt?.toISOString() || new Date().toISOString(),
-          updatedAt:
-            listing.updatedAt?.toISOString() || new Date().toISOString(),
-        }));
-
-        console.log(
-          `[ListingsAPI:${requestId}] Returning ${formattedListings.length} listings`
-        );
-
-        // Return successful response
-        return res.status(200).json({
-          success: true,
-          listings: formattedListings,
-          pagination: {
-            total,
-            currentPage: page,
-            totalPages: Math.max(Math.ceil(total / limit), 1), // Minimum 1 page
-            limit,
-          },
-        });
-      } catch (queryError) {
-        console.error(`[ListingsAPI:${requestId}] Query error:`, queryError);
-
-        // Return mock data with informative message
-        return res.status(200).json({
-          success: true,
-          listings: MOCK_LISTINGS,
-          pagination: {
-            total: MOCK_LISTINGS.length,
-            currentPage: 1,
-            totalPages: 1,
-            limit: MOCK_LISTINGS.length,
-          },
-          message: "Using mock data due to database query error",
-          fallback: true,
-        });
-      }
-    } catch (dbError) {
-      console.error(`[ListingsAPI:${requestId}] DB Error:`, dbError);
-
-      // Return mock data with helpful fallback message
-      return res.status(200).json({
-        success: true,
-        listings: MOCK_LISTINGS,
-        pagination: {
-          total: MOCK_LISTINGS.length,
-          currentPage: 1,
-          totalPages: 1,
-          limit: MOCK_LISTINGS.length,
-        },
-        message: "Using mock data (database connection failed)",
-        fallback: true,
-      });
+    // Add cache-busting parameter to log but not use
+    const cacheBuster = req.query._cb || req.query._t || null;
+    if (cacheBuster) {
+      console.log(`[${requestId}] Cache buster: ${cacheBuster}`);
     }
-  } catch (error) {
-    // Make sure we still return mock data even on critical errors
-    console.error(`[ListingsAPI:${requestId}] Critical error:`, error);
+
+    // Connect to database
+    await connectDB();
+    dbConnection = true;
+
+    // Build query filters
+    const filters = {};
+
+    // Status filter - default to published
+    filters.status = req.query.status || "published";
+
+    // Additional filters
+    if (req.query.propertyType) {
+      filters.propertyType = req.query.propertyType;
+    }
+
+    if (req.query.minPrice) {
+      filters.price = {
+        ...(filters.price || {}),
+        $gte: parseInt(req.query.minPrice, 10),
+      };
+    }
+
+    if (req.query.maxPrice) {
+      filters.price = {
+        ...(filters.price || {}),
+        $lte: parseInt(req.query.maxPrice, 10),
+      };
+    }
+
+    if (req.query.bedrooms) {
+      filters.bedrooms = { $gte: parseInt(req.query.bedrooms, 10) };
+    }
+
+    // Location filter with safe regex
+    if (req.query.location) {
+      const safeLocation = req.query.location.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&"
+      );
+      if (safeLocation.length <= 50) {
+        filters["city"] = new RegExp(safeLocation, "i");
+      }
+    }
+
+    console.log(`[${requestId}] Applying filters:`, filters);
+
+    // Execute query with explicit sort
+    const sortOptions =
+      req.query.sort === "price_asc"
+        ? { price: 1 }
+        : req.query.sort === "price_desc"
+          ? { price: -1 }
+          : { createdAt: -1 };
+
+    // Total count for pagination
+    const total = await Listing.countDocuments(filters);
+
+    // Fetch paginated listings
+    const listings = await Listing.find(filters)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `[${requestId}] Found ${listings.length} of ${total} listings in ${duration}ms`
+    );
+
+    // Return successful response with pagination
     return res.status(200).json({
       success: true,
-      listings: MOCK_LISTINGS,
+      listings,
       pagination: {
-        total: MOCK_LISTINGS.length,
-        currentPage: 1,
-        totalPages: 1,
-        limit: MOCK_LISTINGS.length,
+        total,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        limit,
       },
-      message: "Using mock data due to a server error",
-      fallback: true,
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      requestId,
+    });
+  } catch (error) {
+    console.error(`[${requestId}] Error:`, error);
+
+    // Return error response
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch listings",
+      error:
+        process.env.NODE_ENV === "development" ? error.message : "Server error",
+      requestId,
     });
   } finally {
+    // Close database connection
     if (dbConnection) {
       try {
         await disconnectDB();
-      } catch (disconnectError) {
-        console.error(
-          `[ListingsAPI:${requestId}] Disconnect error:`,
-          disconnectError
-        );
+        console.log(`[${requestId}] Database connection closed`);
+      } catch (error) {
+        console.error(`[${requestId}] Error closing DB connection:`, error);
       }
     }
   }
 }
-
-// Add response compression middleware
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "1mb",
-    },
-    responseLimit: false,
-  },
-};

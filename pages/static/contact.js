@@ -5,6 +5,7 @@ import Input from "../../components/ui/Input";
 import { FiMapPin, FiMail, FiPhone } from "react-icons/fi";
 import { validateForm, ValidationSchemas } from "../../lib/validation";
 import toast from "react-hot-toast"; // Add missing toast import
+import { preventAccidentalSubmit } from "../../lib/form-submission-utils"; // Import form submission prevention utility
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -27,6 +28,12 @@ export default function ContactPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Prevent accidental form submissions like clicking in textboxes
+    if (!preventAccidentalSubmit(e)) {
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitResult({ success: false, message: "" });
 

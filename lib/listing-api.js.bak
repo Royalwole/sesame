@@ -1,0 +1,668 @@
+import toast from "react-hot-toast";
+
+// Import fixed version of getListingById to replace the buggy one
+import { getListingByIdFixed } from "./listing-api-fixed";
+
+/**
+ * Process API response with consistent error handling
+ */
+const processResponse = async (response) => {
+  // Check for redirects to authentication pages
+  if (response.redirected && response.url.includes("/auth")) {
+    console.log("Detected redirect to auth page:", response.url);
+    throw new Error("Authentication required. Please sign in.");
+  }
+
+  // Check content type
+  const contentType = response.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    const text = await response.text();
+    console.error("Expected JSON but got:", text.slice(0, 200));
+
+    // If it looks like an auth page, provide a specific error
+    if (
+      text.includes("sign-in") ||
+      text.includes("login") ||
+      text.includes("<title>Sign In</title>")
+    ) {
+      // Store the current path for post-login redirect
+      if (typeof window !== "undefined") {
+        const currentPath = window.location.pathname + window.location.search;
+        console.log("Storing redirect path for post-login:", currentPath);
+        window.sessionStorage.setItem("redirectAfterLogin", currentPath);
+
+        // Only redirect if we're not already on an auth page
+        if (!window.location.pathname.includes("/auth/")) {
+          window.location.href = `/auth/sign-in?redirect_url=${encodeURIComponent(
+            currentPath
+          )}`;
+        }
+      }
+
+      window.sessionStorage.setItem("authRedirectDetected", "true");
+      throw new Error("Authentication required. Please sign in to continue.");
+    }
+
+    // Instead of throwing an error, return fallback data
+    console.warn("Non-JSON response detected, returning fallback data");
+    return {
+      success: true,
+      listings: [],
+      pagination: {
+        total: 0,
+        currentPage: 1,
+        totalPages: 1,
+        limit: 10,
+      },
+      fallback: true,
+      message: "Using fallback data (received HTML instead of JSON)",
+    };
+  }
+
+  // Check for error status codes
+  if (!response.ok) {
+    try {
+      const errorData = await response.json();
+      throw new Error(
+        errorData.message ||
+          errorData.error ||
+          `Error ${response.status}: ${response.statusText}`
+      );
+    } catch (e) {
+      // If parsing fails, throw generic error with status
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+  }
+
+  // Parse and return the JSON response with error handling
+  try {
+    return await response.json();
+  } catch (e) {
+    console.error("Error parsing JSON:", e);
+    // Return fallback data instead of throwing
+    return {
+      success: true,
+      listings: [],
+      pagination: {
+        total: 0,
+        currentPage: 1,
+        totalPages: 1,
+        limit: 10,
+      },
+      fallback: true,
+      message: "Using fallback data (invalid JSON response)",
+    };
+  }
+};
+
+/**
+ * Fetch listings with error handling and retries
+ * @param {string} endpoint - API endpoint to fetch listings from
+ * @param {Object} options - Fetch options
+ * @param {number} retries - Number of retries on failure
+ * @returns {Promise<Object>} - Listings data
+ */
+export async function fetchListings(endpoint, options = {}, retries = 2) {
+  let currentRetry = 0;
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Import the utility
+  const { fetchWithTimeout, isAbortError } = await import("./fetch-with-timeout");
+
+  while (currentRetry <= retries) {
+    try {
+      // Add cache busting parameter with a more sanitized approach
+      const cacheBuster = `_cb=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Ensure we have a valid URL by making it absolute if it's relative
+      let url = endpoint;
+
+      // If it's a relative URL, ensure it's properly formatted
+      if (!url.startsWith("http")) {
+        // Make sure it starts with a forward slash
+        if (!url.startsWith("/")) {
+          url = "/" + url;
+        }
+
+        // For client-side, use the window.location to make it absolute
+        if (typeof window !== "undefined") {
+          const baseUrl = `${window.location.protocol}//${window.location.host}`;
+          url = baseUrl + url;
+        }
+      }
+
+      // Properly append parameters to URL, avoiding duplicating cache busters
+      const separator = url.includes("?") ? "&" : "?";
+      // Only add cacheBuster if it's not already in the URL
+      const urlWithCache =
+        !url.includes("_cb=") && !url.includes("_nocache=")
+          ? `${url}${separator}${cacheBuster}`
+          : url;
+
+      // Enhanced headers to prevent caching at all levels and add request tracking
+      const enhancedHeaders = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Fetch-ID": requestId,
+        "X-Retry-Count": String(currentRetry),
+        ...(options.headers || {}),
+      };
+
+      // Prepare fetch options with defaults
+      const fetchOptions = {
+        credentials: "include",
+        cache: "no-store", // Force fresh data from network
+        ...options,
+        headers: {
+          ...enhancedHeaders,
+          ...(options.headers || {}),
+        },
+      };
+
+      console.log(`[fetchListings] Fetching ${urlWithCache}, requestId: ${requestId}, retry: ${currentRetry}`);
+
+      // Execute fetch with timeout handling built-in (15 second timeout)
+      const response = await fetchWithTimeout(
+        urlWithCache,
+        fetchOptions,
+        15000,
+        `Request timeout for ${url}`
+      );
+
+      // Process response with error handling
+      return await processResponse(response);
+
+    } catch (error) {
+      // Check if it was an abort error
+      if (isAbortError(error)) {
+        console.warn(`[Listing API] Request aborted for: ${endpoint}, requestId: ${requestId}`);
+        error.context = { endpoint, wasTimeout: true, requestId };
+      }
+
+      // Last retry failed, use fallback data
+      if (currentRetry === retries) {
+        console.error(
+          `Failed to fetch from ${endpoint} after ${retries} retries, requestId: ${requestId}`,
+          error
+        );
+
+        // Return fallback data instead of throwing
+        return {
+          success: true,
+          listings: [],
+          pagination: {
+            total: 0,
+            currentPage: 1,
+            totalPages: 1,
+            limit: 10,
+          },
+          fallback: true,
+          requestId,
+          message: `Using fallback data after failed fetch attempts: ${error?.message || "Network error"}`,
+        };
+      }
+
+      // Wait before retry (exponential backoff)
+      const delay = Math.pow(2, currentRetry) * 500;
+      console.log(
+        `Retry ${currentRetry + 1}/${retries} after ${delay}ms for ${endpoint}, requestId: ${requestId}`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      // Increment retry counter
+      currentRetry++;
+    }
+  }
+}
+
+/**
+ * Helper to fetch agent listings with error handling
+ */
+export async function getAgentListings(page = 1, limit = 50) {
+  const requestId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  
+  try {
+    // Generate cache busting parameter
+    const cacheBuster = `_t=${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    console.log(`[getAgentListings] Fetching agent listings, page ${page}, limit ${limit}, requestId: ${requestId}`);
+
+    // Use fetchListings with cache-busting and no-cache headers
+    const data = await fetchListings(
+      `/api/listings/agent?page=${page}&limit=${limit}&${cacheBuster}`,
+      {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-Fetch-Type": "agent-listings",
+          "X-Request-ID": requestId
+        },
+        cache: "no-store",
+      }
+    );
+
+    // Make sure listings is always an array
+    const listings = Array.isArray(data.listings) ? data.listings : [];
+
+    console.log(
+      `[getAgentListings] Fetched ${listings.length} listings, request ${requestId}`
+    );
+
+    // Check for empty data that might indicate an authentication issue
+    if (listings.length === 0 && data.fallback) {
+      console.warn(`[getAgentListings] Received fallback data for request ${requestId}`);
+      
+      // Check if we're authenticated
+      if (typeof window !== 'undefined') {
+        try {
+          const authCheckResponse = await fetch('/api/auth/check', {
+            headers: { 'X-Request-ID': requestId }
+          });
+          const authData = await authCheckResponse.json();
+          
+          if (!authData.isAuthenticated) {
+            console.error(`[getAgentListings] User not authenticated for request ${requestId}`);
+            toast.error("Please sign in to view your listings");
+            
+            // Optional: Redirect to login
+            // window.location.href = '/auth/sign-in';
+          }
+        } catch (authError) {
+          console.error(`[getAgentListings] Auth check failed for request ${requestId}:`, authError);
+        }
+      }
+    }
+
+    return {
+      listings,
+      pagination: data.pagination || {
+        total: 0,
+        currentPage: page,
+        totalPages: 1,
+        limit,
+      },
+      success: true,
+      fallback: data.fallback,
+      requestId,
+      timestamp: Date.now(), // Add timestamp to track when data was fetched
+    };
+  } catch (error) {
+    console.error(`[getAgentListings] Error for request ${requestId}:`, error);
+    toast.error("Failed to load your listings. Please try again later.");
+    return {
+      listings: [],
+      pagination: { total: 0, currentPage: page, totalPages: 1, limit },
+      success: false,
+      requestId,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Helper to fetch public listings with error handling
+ */
+export async function getPublicListings(filters = {}, page = 1, limit = 12) {
+  const isClient = typeof window !== "undefined";
+  const requestId = `public-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  try {
+    // Clean filters - remove undefined/null/empty values
+    const cleanFilters = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+
+    // Add timestamp to force fresh data
+    const timestamp = Date.now();
+
+    // Build query string from filters
+    const queryParams = new URLSearchParams({
+      page,
+      limit,
+      _t: timestamp, // Add timestamp to prevent caching
+      _rid: requestId, // Add request ID for tracking
+      ...cleanFilters,
+    }).toString();
+
+    console.log(`[getPublicListings] Fetching with filters: ${JSON.stringify(cleanFilters)}, requestId: ${requestId}`);
+
+    // Use enhanced fetchListings
+    const data = await fetchListings(`/api/listings?${queryParams}`, {
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Fetch-Type": "public-listings",
+        "X-Request-ID": requestId,
+      },
+      cache: "no-store",
+    });
+
+    // Make sure listings is always an array
+    const listings = Array.isArray(data.listings) ? data.listings : [];
+    
+    console.log(
+      `[getPublicListings] Fetched ${listings.length} listings, requestId: ${requestId}${
+        data.fallback ? " (using fallback data)" : ""
+      }`
+    );
+
+    // If we received fallback data, log it for debugging
+    if (data.fallback) {
+      console.warn(`[getPublicListings] Using fallback data for request ${requestId}`);
+    }
+
+    return {
+      listings,
+      pagination: data.pagination || {
+        total: data.total || 0,
+        currentPage: page,
+        totalPages: Math.ceil((data.total || 0) / limit),
+        limit,
+      },
+      filters: cleanFilters,
+      success: true,
+      fallback: data.fallback,
+      requestId,
+      timestamp,
+    };
+  } catch (error) {
+    console.error(`[getPublicListings] Error for request ${requestId}:`, error);
+    
+    // Only show toast on client-side
+    if (isClient) {
+      toast.error("Could not load listings. Please try refreshing the page.");
+    }
+    
+    return {
+      listings: [],
+      pagination: {
+        total: 0,
+        currentPage: page,
+        totalPages: 1,
+        limit,
+      },
+      filters: {},
+      success: false,
+      error: error.message,
+      requestId,
+    };
+  }
+}
+
+    console.log(`[getPublicListings:${requestId}] Fetching listings`);
+
+    // Use enhanced fetchListings with dedicated options
+    const data = await fetchListings(
+      `/api/listings?${queryParams}`,
+      {
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+          "X-Request-ID": requestId,
+        },
+        cache: "no-store", // Force network request
+      },
+      2 // Allow up to 2 retries
+    );
+
+    // Ensure we have array data, even if response is malformed
+    const listings = Array.isArray(data.listings) ? data.listings : [];
+
+    console.log(
+      `[getPublicListings:${requestId}] Received ${listings.length} listings`
+    );
+
+    // Log the first few IDs for debugging
+    if (listings.length > 0) {
+      const firstFew = listings
+        .slice(0, 3)
+        .map((l) => l._id)
+        .join(", ");
+      console.log(
+        `[getPublicListings:${requestId}] First few listing IDs: ${firstFew}...`
+      );
+    }
+
+    const pagination = data.pagination || {
+      total: 0,
+      currentPage: page,
+      totalPages: 1,
+      limit,
+    };
+
+    // Show fallback warning only on client
+    if (isClient && data.fallback) {
+      toast.warning(data.message || "Using fallback listings data");
+    }
+
+    return {
+      listings,
+      pagination,
+      success: true,
+      fallback: data.fallback,
+      timestamp: Date.now(),
+      requestId,
+    };
+  } catch (error) {
+    console.error(`[getPublicListings:${requestId}] Failed:`, error);
+
+    // Show toast only on client
+    if (isClient) {
+      toast.error("Failed to load listings. Please try again later.");
+    }
+
+    return {
+      listings: [],
+      pagination: { total: 0, currentPage: page, totalPages: 1, limit },
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
+/**
+ * Helper to fetch a single listing by ID with enhanced error handling and diagnostics
+ * NOTE: This is a stub implementation - the actual function is imported from listing-api-fixed.js
+ */
+function getListingByIdOriginal(id) {
+  console.log("[getListingById] Using stub implementation - this should never be called directly");
+  
+  if (!id) {
+    console.error("[getListingById] Called with no ID");
+    return { success: false, error: "No listing ID provided", listing: null };
+  }
+
+  // This function is just a placeholder - the real implementation is in listing-api-fixed.js
+  return {
+    success: false,
+    error: "This function is replaced by the fixed version in listing-api-fixed.js",
+    listing: null
+  };
+}
+}
+
+  console.log(`[getListingById] Starting request for listing: ${pureId}`);
+
+  // Strategy: Try fixed-fetch first, then standard endpoint, then recovery
+  let strategies = [
+    { endpoint: `/api/listings/fixed-fetch?id=${pureId}`, type: "fixed-fetch" },
+    { endpoint: `/api/listings/${pureId}`, type: "standard" },
+    {
+      endpoint: `/api/listings/fixed-fetch?id=${pureId}&forceDirect=true`,
+      type: "recovery",
+    },
+  ];
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Select strategy based on attempt number
+    const strategy = strategies[Math.min(attempt, strategies.length - 1)];
+
+    try {
+      diagnostics.attempts++;
+      console.log(
+        `[getListingById] Attempt ${attempt + 1}/${MAX_RETRIES + 1} using "${strategy.type}" strategy for ID: ${pureId}`
+      );
+
+      // Import the fetch utility for better abort handling
+      const { fetchWithTimeout, isAbortError } = await import(
+        "./fetch-with-timeout"
+      );
+
+      // Create a unique cache-busting parameter
+      const cacheBuster = `_nocache=${Date.now()}-${Math.random().toString(36).substring(2, 12)}`;
+      const endpoint = `${strategy.endpoint}${strategy.endpoint.includes("?") ? "&" : "?"}${cacheBuster}`;
+
+      console.log(`[getListingById] Fetching URL: ${endpoint}`);
+
+      // Use our enhanced fetch utility that handles AbortController properly
+      const response = await fetchWithTimeout(
+        endpoint,
+        {
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+            "X-Debug-ID": diagnostics.requestId,
+            "X-Attempt-Number": String(attempt + 1),
+            "X-Strategy": strategy.type,
+          },
+          cache: "no-store",
+        },
+        30000, // 30 second timeout
+        `Request timeout after 30s for listing ID: ${pureId}`
+      );
+
+      // Process response
+      let data;
+      try {
+        data = await processResponse(response);
+      } catch (error) {
+        error.message = `Listing ${pureId}: ${error.message}`;
+        throw error;
+      }
+
+      // Validate response structure
+      if (!data) {
+        throw new Error("Empty response from server");
+      }
+
+      if (!data.listing) {
+        if (data.success === false) {
+          throw new Error(
+            data.error || data.message || "Server reported failure"
+          );
+        }
+        throw new Error("Response missing listing data");
+      }
+
+      // Verify ID consistency
+      const returnedId = data.listing._id ? String(data.listing._id) : null;
+
+      if (!returnedId) {
+        console.warn(
+          `[getListingById] Missing ID in response for listing "${data.listing.title}"`
+        );
+      } else if (returnedId !== pureId) {
+        console.warn(
+          `[getListingById] ID mismatch! Requested: ${pureId}, Found: ${returnedId}`
+        );
+
+        // Only accept ID mismatch from recovery/fixed-fetch strategies
+        if (strategy.type === "standard") {
+          throw new Error(
+            `ID mismatch error: Expected ${pureId}, got ${returnedId}`
+          );
+        } else {
+          console.log(
+            `[getListingById] Accepting ID mismatch from ${strategy.type} strategy`
+          );
+        }
+      }
+
+      // Success! Return the listing data
+      console.log(
+        `[getListingById] Success! Retrieved listing: ${
+          data.listing.title || "[No Title]"
+        } with ID ${returnedId}`
+      );
+
+      return {
+        success: true,
+        listing: data.listing,
+        idMatch: returnedId === pureId,
+        diagnostics: {
+          ...diagnostics,
+          duration: Date.now() - diagnostics.startTime,
+          attempts: diagnostics.attempts,
+          strategy: strategy.type,
+        },
+      };
+    } catch (error) {
+      // Record error details
+      const errorInfo = {
+        attempt: attempt + 1,
+        message: error.message,
+        name: error.name,
+        timestamp: Date.now(),
+        strategy: strategy.type,
+      };
+      diagnostics.errors.push(errorInfo);
+
+      console.warn(
+        `[getListingById] Attempt ${attempt + 1} failed with ${strategy.type} strategy: ${error.name} - ${error.message}`
+      ); // Use our utility to check for abort errors
+      const { isAbortError } = await import("./fetch-with-timeout");
+
+      if (isAbortError(error)) {
+        console.warn(
+          `[getListingById] Request was aborted (timeout or manual abort)`
+        );
+        diagnostics.timeouts = (diagnostics.timeouts || 0) + 1;
+
+        // Add brief delay before next attempt with exponential backoff
+        const delayMs = Math.min(500 * Math.pow(2, attempt), 5000); // Max 5 second delay
+        console.log(
+          `[getListingById] Waiting ${delayMs}ms before next attempt`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      // If this was the last retry, return the error details
+      if (attempt === MAX_RETRIES) {
+        console.error(`[getListingById] All attempts failed for ID: ${pureId}`);
+        return {
+          success: false,
+          error:
+            error.message || "Failed to load listing after multiple attempts",
+          diagnostics,
+        };
+      }
+
+      // Wait before retry with exponential backoff
+      const delay = Math.min(Math.pow(2, attempt) * 500, 2000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  // Fallback error - should not normally reach here
+  return {
+    success: false,
+    error: "Failed to load listing data after exhausting all options",
+    diagnostics,
+  };
+}
+
+// OVERRIDE: The original implementation is now defined directly as getListingByIdOriginal
+// This prevents the "signal is aborted without reason" error and the "duplicate export" error
+
+// Import and re-export only the fixed version as getListingById
+export { getListingByIdFixed as getListingById } from "./listing-api-fixed";
