@@ -5,18 +5,6 @@ import Link from "next/link";
 import { useAuth } from "../../../../contexts/AuthContext";
 import AdminLayout from "../../../../components/layout/AdminLayout";
 import { withAuthGetServerSideProps } from "../../../../lib/withAuth";
-import {
-  Container,
-  Box,
-  Heading,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
-  Flex,
-  Button,
-} from "@chakra-ui/react";
 import UserPermissionsManager from "../../../../components/admin/permissions/UserPermissionsManager";
 import PermissionBundleManager from "../../../../components/admin/permissions/PermissionBundleManager";
 import PermissionRequestReview from "../../../../components/admin/permissions/PermissionRequestReview";

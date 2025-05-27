@@ -25,9 +25,7 @@ export function AuthProvider({ children }) {
   const syncUserWithDatabase = async (clerkUser) => {
     try {
       setIsLoading(true);
-      console.log("[Auth] Syncing user with database...");
-
-      // Make sure we have a valid Clerk user ID
+      console.log("[Auth] Syncing user with database...");      // Make sure we have a valid Clerk user ID
       if (!clerkUser || !clerkUser.id) {
         console.error("[Auth] Invalid Clerk user object");
         toast.error("Authentication error: User profile not found");
@@ -39,22 +37,37 @@ export function AuthProvider({ children }) {
       const syncId = `sync-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
       
       // Add timeout to the fetch request with proper AbortController handling
-      const { fetchWithTimeout } = await import('../lib/fetch-with-timeout');
+      const { fetchWithTimeout, withFetchTimeout } = await import('../lib/fetch-with-timeout');
       
       try {
         console.log(`[Auth] Requesting sync for user: ${clerkUser.id}, syncId: ${syncId}`);
-        
-        const response = await fetchWithTimeout(
-          `/api/users/sync?clerkId=${clerkUser.id}&syncId=${syncId}`, 
-          {
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'X-Request-Source': 'auth-context',
-              'X-Sync-ID': syncId
-            }
+          // Use the enhanced withFetchTimeout with retry capability
+        const response = await withFetchTimeout(
+          async ({ signal }) => {
+            return await fetch(
+              `/api/users/sync?clerkId=${clerkUser.id}&syncId=${syncId}`,
+              {
+                headers: {
+                  'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  'Pragma': 'no-cache',
+                  'X-Request-Source': 'auth-context',
+                  'X-Sync-ID': syncId
+                },
+                signal
+              }
+            );
           },
-          20000 // 20 seconds timeout
+          {
+            timeoutMs: 30000, // 30 seconds timeout
+            retries: 1,       // One retry attempt
+            retryDelayMs: 1000, // 1 second between retries
+            onTimeout: (error) => {
+              console.warn(`[Auth] Sync request timed out, retrying... (${syncId})`);
+            },
+            onRetry: (error, attempt) => {
+              console.log(`[Auth] Retrying sync request, attempt ${attempt + 1} (${syncId})`);
+            }
+          }
         );
 
         // Parse the response JSON whether it's an error or success
@@ -62,13 +75,24 @@ export function AuthProvider({ children }) {
           console.error(`[Auth] Failed to parse response for syncId ${syncId}:`, e);
           return { success: false, message: "Invalid server response" };
         });
-        
-        if (!response.ok) {
+          if (!response.ok) {
           console.error(`[Auth] Sync failed with status: ${response.status}, syncId: ${syncId}`, data);
           
           // Display a more user-friendly error message
           const errorMessage = data.message || 'Unknown error';
-          toast.error(`Profile sync issue: ${errorMessage}. Please try again later.`);
+          
+          // Handle different status codes with more specific messages
+          if (response.status === 503 || response.status === 504) {
+            toast.error('Profile sync temporarily unavailable. We are working on it.');
+          } else if (response.status === 429) {
+            toast.error('Too many sync requests. Please try again in a few minutes.');
+          } else {
+            toast.error(`Profile sync issue: ${errorMessage}. Please try again later.`, {
+              duration: 5000,
+              onClick: () => refreshUserProfile() // Allow user to retry by clicking toast
+            });
+          }
+          
           setIsLoading(false);
           return;
         }
@@ -90,16 +114,27 @@ export function AuthProvider({ children }) {
         } else {
           console.error(`[Auth] User sync failed: ${data.error || "Unknown error"}, syncId: ${syncId}`);
           toast.error(`User profile sync error: ${data.error || "Unknown error"}`);
-        }
-      } catch (fetchError) {
-        const { isAbortError } = await import('../lib/fetch-with-timeout');
+        }      } catch (fetchError) {
+        const { isAbortError, isTimeoutError } = await import('../lib/fetch-with-timeout');
         
-        if (isAbortError(fetchError)) {
+        if (isAbortError(fetchError) || isTimeoutError(fetchError)) {
           console.error(`[Auth] User sync timed out, syncId: ${syncId}`);
-          toast.error("Profile sync timed out. Please try again later.");
+          toast.error("Profile sync timed out. Please try again later.", {
+            duration: 5000,
+            onClick: () => refreshUserProfile() // Allow user to retry by clicking toast
+          });
+        } else if (fetchError.message && fetchError.message.includes('Failed to fetch')) {
+          console.error(`[Auth] Network error for syncId ${syncId}:`, fetchError);
+          toast.error("Network issue detected. Check your connection and try again.", {
+            duration: 5000,
+            onClick: () => refreshUserProfile()
+          });
         } else {
           console.error(`[Auth] Fetch error for syncId ${syncId}:`, fetchError);
-          toast.error(`Connection error: ${fetchError.message}`);
+          toast.error(`Connection error: ${fetchError.message}`, {
+            duration: 5000,
+            onClick: () => refreshUserProfile()
+          });
         }
       }
     } catch (error) {

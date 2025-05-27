@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
-// Import the ListingCard component with .jsx extension
-import ListingCard from "./ListingCard.jsx";
+// Import the ListingCard component without specifying the extension
+import ListingCard from "./ListingCard";
 import { FiAlertCircle, FiLoader } from "react-icons/fi";
 
 /**

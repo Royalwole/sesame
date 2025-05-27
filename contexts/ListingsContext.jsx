@@ -39,43 +39,55 @@ export const ListingsProvider = ({ children, initialListings = [] }) => {
   const [error, setError] = useState(null);
   const [totalListings, setTotalListings] = useState(0);
   const [filters, setFilters] = useState({});
-  const isHydrated = useHydration();
-  // Fetch listings with proper hydration handling
+  const isHydrated = useHydration();  // Fetch listings with proper hydration handling
   const fetchListings = useCallback(async () => {
-    if (!isHydrated) return;
+    if (!isHydrated) {
+      console.log('[ListingsContext] Not hydrated yet, skipping fetch');
+      return;
+    }
+
+    console.log('[ListingsContext] Starting fetchListings with filters:', filters);
 
     try {
       setIsLoading(true);
       setError(null);
 
       const queryParams = new URLSearchParams(filters).toString();
-      // Use the enhanced fetch method from listing-api-wrapper
-      const { fetchWithTimeout } = await import('../lib/fetch-with-timeout');
+      const url = `/api/listings${queryParams ? `?${queryParams}` : ''}`;
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+      console.log('[ListingsContext] Fetching URL:', url);
       
-      const response = await fetchWithTimeout(`/api/listings?${queryParams}`, {
+      // Use the imported fetchJSON utility for consistent error handling
+      const data = await fetchJSON(url, {
+        timeout: 15000,
+        retries: 2,
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache',
           'X-Request-Source': 'listings-context',
-        },
-        signal: controller.signal
-      }, 15000);
-      
-      clearTimeout(timeoutId);
-      
-      const data = await response.json();
+        }
+      });
 
-      if (!response.ok) {
+      console.log('[ListingsContext] Raw API response:', data);
+
+      // Check if the response indicates success
+      if (!data.success) {
+        console.error('[ListingsContext] API returned error:', data.message);
         throw new Error(data.message || 'Failed to fetch listings');
       }
 
       // Ensure we always have valid arrays
       const safeListings = Array.isArray(data.listings) ? data.listings : [];
+      console.log('[ListingsContext] Processing listings:', {
+        rawListings: data.listings,
+        safeListings,
+        count: safeListings.length,
+        pagination: data.pagination,
+        total: data.total
+      });
+      
       setListings(safeListings);
-      setTotalListings(data.total || safeListings.length);
+      setTotalListings(data.pagination?.total || data.total || safeListings.length);
     } catch (err) {
       console.error('[ListingsContext] Error fetching listings:', err);
       setError(err.message || 'Failed to load listings');

@@ -1,12 +1,9 @@
-import React, { memo, useState, useCallback, useEffect, useMemo } from "react";
+import React, { memo } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import PropTypes from "prop-types";
-import { useInView } from "react-intersection-observer";
-import { FiHome, FiBed, FiBath, FiSquare, FiHeart, FiMapPin, FiClock, FiAlertTriangle, FiImage } from "react-icons/fi";
 
 // Simple version of ListingCard for testing
-const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
+const SimpleListingCard = memo(function SimpleListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
   if (!listing) {
     return <div>No listing data</div>;
   }
@@ -32,9 +29,9 @@ const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages 
 });
 
 // Add displayName for better debugging
-ListingCard.displayName = 'ListingCard';
+SimpleListingCard.displayName = 'SimpleListingCard';
 
-ListingCard.propTypes = {
+SimpleListingCard.propTypes = {
   listing: PropTypes.shape({
     _id: PropTypes.string.isRequired,
     title: PropTypes.string,
@@ -49,4 +46,4 @@ ListingCard.propTypes = {
   size: PropTypes.oneOf(['small', 'default', 'large'])
 };
 
-export default ListingCard;
+export default SimpleListingCard;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Heading, Text, Tabs, TabList, TabPanels, Tab, TabPanel, Spinner, Alert, AlertIcon, Badge } from '@chakra-ui/react';
+import { toast } from 'react-hot-toast';
 import { useAuth } from '../../../contexts/AuthContext';
 import usePermissions from '../../../hooks/usePermissions';
 import PermissionCatalog from './PermissionCatalog';

@@ -1,67 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Card, 
-  CardBody, 
-  CardHeader, 
-  Heading, 
-  Button, 
-  FormControl, 
-  FormLabel, 
-  FormHelperText,
-  useToast,
-  Badge,
-  Flex,
-  Text,
-  Stack,
-  HStack,
-  CheckboxGroup,
-  Checkbox,
-  Divider,
-  Tag,
-  TagLabel,
-  TagCloseButton,
-  Input,
-  InputGroup,
-  InputRightElement,
-  Collapse,
-  useDisclosure,
-  Accordion,
-  AccordionItem,
-  AccordionButton,
-  AccordionPanel,
-  AccordionIcon,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  Switch,
-  Icon,
-  Tooltip,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogContent,
-  AlertDialogOverlay,
-  Spinner,
-  Select,
-  NumberInput,
-  NumberInputField,
-  NumberInputStepper,
-  NumberIncrementStepper,
-  NumberDecrementStepper
-} from '@chakra-ui/react';
-import { AddIcon, CalendarIcon, InfoIcon, WarningIcon, CheckIcon, CloseIcon } from '@chakra-ui/icons';
+import { toast } from 'react-hot-toast';
 import { PERMISSIONS } from '../../lib/permissions-manager';
 
 /**
@@ -80,11 +18,9 @@ const UserPermissionManager = ({ userId, userRole, currentPermissions = [] }) =>
   const [isTemporary, setIsTemporary] = useState(false);
   const [expirationDays, setExpirationDays] = useState(7);
   const [temporaryPermissions, setTemporaryPermissions] = useState({});
-  const { isOpen: isModalOpen, onOpen: openModal, onClose: closeModal } = useDisclosure();
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [permissionToRevoke, setPermissionToRevoke] = useState(null);
-  const cancelRef = React.useRef();
-  const toast = useToast();
 
   // Fetch user permissions on load
   useEffect(() => {
@@ -125,13 +61,7 @@ const UserPermissionManager = ({ userId, userRole, currentPermissions = [] }) =>
       setPermissions(data.permissions || []);
       setTemporaryPermissions(data.temporaryPermissions || {});
     } catch (error) {
-      toast({
-        title: 'Error fetching permissions',
-        description: error.message,
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      toast.error(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -167,28 +97,16 @@ const UserPermissionManager = ({ userId, userRole, currentPermissions = [] }) =>
         throw new Error(data.error || 'Failed to grant permission');
       }
 
-      toast({
-        title: 'Permission granted',
-        description: `${selectedPermission} permission has been granted to user${isTemporary ? ' (temporary)' : ''}`,
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
+      toast.success(`${selectedPermission} permission has been granted to user${isTemporary ? ' (temporary)' : ''}`);
 
       // Refresh permissions
       fetchUserPermissions();
       
       // Reset form
       setSelectedPermission('');
-      closeModal();
+      setIsModalOpen(false);
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      toast.error(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -224,24 +142,12 @@ const UserPermissionManager = ({ userId, userRole, currentPermissions = [] }) =>
         throw new Error(data.error || 'Failed to revoke permission');
       }
 
-      toast({
-        title: 'Permission revoked',
-        description: `${permissionToRevoke} permission has been revoked from user`,
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
+      toast.success(`${permissionToRevoke} permission has been revoked from user`);
 
       // Refresh permissions
       fetchUserPermissions();
     } catch (error) {
-      toast({
-        title: 'Error',
-        description: error.message,
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+      toast.error(error.message);
     } finally {
       setIsLoading(false);
       setIsConfirmOpen(false);
@@ -271,275 +177,265 @@ const UserPermissionManager = ({ userId, userRole, currentPermissions = [] }) =>
   };
 
   // Get badge color based on days remaining
-  const getExpirationColor = (expiresAt) => {
+  const getExpirationColorClasses = (expiresAt) => {
     const daysRemaining = getDaysRemaining(expiresAt);
-    if (daysRemaining <= 1) return 'red';
-    if (daysRemaining <= 3) return 'orange';
-    if (daysRemaining <= 7) return 'yellow';
-    return 'green';
+    if (daysRemaining <= 1) return 'bg-red-100 text-red-800 border-red-200';
+    if (daysRemaining <= 3) return 'bg-orange-100 text-orange-800 border-orange-200';
+    if (daysRemaining <= 7) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    return 'bg-green-100 text-green-800 border-green-200';
   };
 
   return (
-    <Card
-      variant="outline"
-      borderRadius="lg"
-      boxShadow="sm"
-      mt={6}
-      bg="white"
-      borderColor="gray.200"
-    >
-      <CardHeader pb={2}>
-        <Flex justifyContent="space-between" alignItems="center">
-          <Heading size="md">User Permissions</Heading>
-          <Button 
-            leftIcon={<AddIcon />} 
-            colorScheme="blue" 
-            size="sm"
-            onClick={openModal}
-            isDisabled={isLoading}
+    <div className="mt-6 bg-white border border-gray-200 rounded-lg shadow-sm">
+      <div className="px-6 py-4 border-b border-gray-200">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold">User Permissions</h3>
+          <button 
+            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+            onClick={() => setIsModalOpen(true)}
+            disabled={isLoading}
           >
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
             Grant Permission
-          </Button>
-        </Flex>
-      </CardHeader>
-      <CardBody>
+          </button>
+        </div>
+      </div>
+      
+      <div className="p-6">
         {isLoading && (
-          <Flex justify="center" align="center" my={4}>
-            <Spinner />
-          </Flex>
+          <div className="flex justify-center items-center my-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
         )}
         
         {!isLoading && permissions.length === 0 && (
-          <Flex 
-            direction="column" 
-            align="center" 
-            justify="center"
-            bg="gray.50"
-            p={4}
-            borderRadius="md"
-            border="1px dashed"
-            borderColor="gray.300"
-          >
-            <Text color="gray.500">No custom permissions granted to this user.</Text>
-            <Text fontSize="sm" color="gray.400" mt={1}>
+          <div className="flex flex-col items-center justify-center bg-gray-50 p-4 rounded-md border border-dashed border-gray-300">
+            <p className="text-gray-500">No custom permissions granted to this user.</p>
+            <p className="text-sm text-gray-400 mt-1">
               User has standard permissions from their {userRole} role.
-            </Text>
-          </Flex>
+            </p>
+          </div>
         )}
         
         {!isLoading && permissions.length > 0 && (
-          <Box>
-            <Text mb={2} fontSize="sm" color="gray.600">
-              <Icon as={InfoIcon} mr={1} color="blue.500" />
+          <div>
+            <p className="mb-2 text-sm text-gray-600 flex items-center">
+              <svg className="w-4 h-4 mr-1 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
               User has {permissions.length} custom permission(s) in addition to standard {userRole} role permissions.
-            </Text>
+            </p>
             
-            <Table variant="simple" size="sm" mt={3}>
-              <Thead bg="gray.50">
-                <Tr>
-                  <Th>Permission</Th>
-                  <Th>Type</Th>
-                  <Th>Expiration</Th>
-                  <Th width="80px">Actions</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {permissions.map((permission) => {
-                  const isTemp = temporaryPermissions[permission];
-                  const expiresAt = isTemp ? temporaryPermissions[permission].expiresAt : null;
-                  
-                  return (
-                    <Tr key={permission}>
-                      <Td>
-                        <Tooltip 
-                          label={PERMISSIONS[permission]?.description || 'Custom permission'} 
-                          placement="top"
-                        >
-                          <Text fontFamily="mono" fontSize="xs">
-                            {permission}
-                          </Text>
-                        </Tooltip>
-                      </Td>
-                      <Td>
-                        {isTemp ? (
-                          <Badge colorScheme="purple" variant="subtle">
-                            Temporary
-                          </Badge>
-                        ) : (
-                          <Badge colorScheme="blue" variant="subtle">
-                            Permanent
-                          </Badge>
-                        )}
-                      </Td>
-                      <Td>
-                        {isTemp ? (
-                          <Tooltip 
-                            label={`Expires on ${formatExpirationDate(expiresAt)}`}
-                            placement="top"
+            <div className="overflow-x-auto mt-3">
+              <table className="min-w-full bg-white">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Permission</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiration</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {permissions.map((permission) => {
+                    const isTemp = temporaryPermissions[permission];
+                    const expiresAt = isTemp ? temporaryPermissions[permission].expiresAt : null;
+                    
+                    return (
+                      <tr key={permission}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div title={PERMISSIONS[permission]?.description || 'Custom permission'}>
+                            <span className="text-xs font-mono text-gray-900">
+                              {permission}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {isTemp ? (
+                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                              Temporary
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                              Permanent
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {isTemp ? (
+                            <div title={`Expires on ${formatExpirationDate(expiresAt)}`}>
+                              <span className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full border ${getExpirationColorClasses(expiresAt)}`}>
+                                <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                {getDaysRemaining(expiresAt)} days left
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              N/A
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            className="text-xs text-red-600 hover:text-red-900"
+                            onClick={() => openRevokeConfirmation(permission)}
                           >
-                            <Badge 
-                              colorScheme={getExpirationColor(expiresAt)}
-                              variant="outline"
-                            >
-                              <CalendarIcon mr={1} />
-                              {getDaysRemaining(expiresAt)} days left
-                            </Badge>
-                          </Tooltip>
-                        ) : (
-                          <Text fontSize="xs" color="gray.400">
-                            N/A
-                          </Text>
-                        )}
-                      </Td>
-                      <Td>
-                        <Button
-                          size="xs"
-                          colorScheme="red"
-                          variant="ghost"
-                          onClick={() => openRevokeConfirmation(permission)}
-                        >
-                          Revoke
-                        </Button>
-                      </Td>
-                    </Tr>
-                  );
-                })}
-              </Tbody>
-            </Table>
-          </Box>
+                            Revoke
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
         
         {/* Grant Permission Modal */}
-        <Modal isOpen={isModalOpen} onClose={closeModal} size="md">
-          <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Grant Permission</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody pb={6}>
-              <FormControl mb={4}>
-                <FormLabel>Search Permissions</FormLabel>
-                <InputGroup>
-                  <Input
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Grant Permission</h3>
+                <button
+                  className="text-gray-400 hover:text-gray-600"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Search Permissions</label>
+                <div className="relative">
+                  <input
+                    type="text"
                     placeholder="Type to search permissions..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                  <InputRightElement>
-                    {searchQuery && (
-                      <CloseIcon 
-                        boxSize={3} 
-                        cursor="pointer"
-                        onClick={() => setSearchQuery('')}
-                      />
-                    )}
-                  </InputRightElement>
-                </InputGroup>
-              </FormControl>
+                  {searchQuery && (
+                    <button 
+                      className="absolute right-2 top-2 text-gray-400 hover:text-gray-600"
+                      onClick={() => setSearchQuery('')}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
               
-              <FormControl mb={4}>
-                <FormLabel>Select Permission</FormLabel>
-                <Select
-                  placeholder="Choose a permission to grant"
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Permission</label>
+                <select
                   value={selectedPermission}
                   onChange={(e) => setSelectedPermission(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
+                  <option value="">Choose a permission to grant</option>
                   {filteredPermissions.map((perm) => (
                     <option key={perm.name} value={perm.name}>
                       {perm.name} - {perm.description}
                     </option>
                   ))}
-                </Select>
-                <FormHelperText>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
                   Select the permission you want to grant to this user
-                </FormHelperText>
-              </FormControl>
+                </p>
+              </div>
               
-              <FormControl display="flex" alignItems="center" mb={4}>
-                <FormLabel mb={0}>
-                  Temporary Permission
-                </FormLabel>
-                <Switch 
-                  colorScheme="purple"
-                  isChecked={isTemporary}
-                  onChange={() => setIsTemporary(!isTemporary)}
-                />
-              </FormControl>
+              <div className="mb-4 flex items-center">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={isTemporary}
+                    onChange={() => setIsTemporary(!isTemporary)}
+                    className="mr-2"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Temporary Permission</span>
+                </label>
+              </div>
               
-              <Collapse in={isTemporary} animateOpacity>
-                <FormControl mt={4}>
-                  <FormLabel>Expiration (days)</FormLabel>
-                  <NumberInput 
-                    max={365} 
-                    min={1} 
+              {isTemporary && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Expiration (days)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
                     value={expirationDays}
-                    onChange={(valueString) => setExpirationDays(parseInt(valueString, 10))}
-                  >
-                    <NumberInputField />
-                    <NumberInputStepper>
-                      <NumberIncrementStepper />
-                      <NumberDecrementStepper />
-                    </NumberInputStepper>
-                  </NumberInput>
-                  <FormHelperText>
+                    onChange={(e) => setExpirationDays(parseInt(e.target.value, 10))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
                     Permission will automatically expire after this many days
-                  </FormHelperText>
-                </FormControl>
-              </Collapse>
-            </ModalBody>
+                  </p>
+                </div>
+              )}
 
-            <ModalFooter>
-              <Button 
-                colorScheme="blue" 
-                mr={3} 
-                onClick={handleGrantPermission}
-                isLoading={isLoading}
-                isDisabled={!selectedPermission}
-              >
-                Grant Permission
-              </Button>
-              <Button onClick={closeModal}>Cancel</Button>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+              <div className="flex justify-end space-x-3">
+                <button 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  onClick={handleGrantPermission}
+                  disabled={isLoading || !selectedPermission}
+                >
+                  {isLoading ? 'Granting...' : 'Grant Permission'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Revoke Permission Confirmation */}
-        <AlertDialog
-          isOpen={isConfirmOpen}
-          leastDestructiveRef={cancelRef}
-          onClose={() => setIsConfirmOpen(false)}
-        >
-          <AlertDialogOverlay>
-            <AlertDialogContent>
-              <AlertDialogHeader fontSize="lg" fontWeight="bold">
-                Revoke Permission
-              </AlertDialogHeader>
+        {isConfirmOpen && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+              <h3 className="text-lg font-bold mb-4">Revoke Permission</h3>
 
-              <AlertDialogBody>
-                Are you sure you want to revoke the <Badge colorScheme="red">{permissionToRevoke}</Badge> permission from this user?
+              <div className="mb-4">
+                <p>Are you sure you want to revoke the <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">{permissionToRevoke}</span> permission from this user?</p>
                 
-                <Text mt={2} fontSize="sm" color="gray.600">
+                <p className="mt-2 text-sm text-gray-600">
                   This action cannot be undone and may affect the user's access to certain features.
-                </Text>
-              </AlertDialogBody>
+                </p>
+              </div>
 
-              <AlertDialogFooter>
-                <Button ref={cancelRef} onClick={() => setIsConfirmOpen(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  colorScheme="red" 
-                  onClick={handleRevokePermission} 
-                  ml={3}
-                  isLoading={isLoading}
+              <div className="flex justify-end space-x-3">
+                <button 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  onClick={() => setIsConfirmOpen(false)}
                 >
-                  Revoke
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialogOverlay>
-        </AlertDialog>
-      </CardBody>
-    </Card>
+                  Cancel
+                </button>
+                <button 
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                  onClick={handleRevokePermission}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Revoking...' : 'Revoke'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

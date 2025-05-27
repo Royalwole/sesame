@@ -1,5 +1,5 @@
 import React from 'react';
-import ListingCard from '../../components/listings/ListingCard.jsx';
+import ListingCard from '../../components/listings/ListingCard';
 
 export default function ListingCardTest() {
   // Mock data for testing

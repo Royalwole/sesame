@@ -5,11 +5,22 @@ import { ListingsProvider, useListings } from "../../contexts/ListingsContext";
 import ListingsGrid from "../../components/listings/ListingsGrid";
 import ListingsFilter from "../../components/listings/ListingsFilter";
 import Pagination from "../../components/common/Pagination";
-import { getPublicListings } from "../../lib/listing-api";
+import { getPublicListingsServerSide } from "../../lib/listing-api";
 
 // Main listings component (inside the provider)
 function ListingsContent() {
   const [showFilters, setShowFilters] = useState(false);
+  const context = useListings();
+  
+  // Debug logging
+  console.log('ListingsContent context:', {
+    hasContext: !!context,
+    listings: context?.listings?.length || 0,
+    loading: context?.loading,
+    error: context?.error,
+    meta: context?.meta
+  });
+  
   const { 
     listings = [], 
     loading = false, 
@@ -19,7 +30,7 @@ function ListingsContent() {
     applyFilters, 
     changePage, 
     refreshListings 
-  } = useListings() || {};
+  } = context || {};
 
   const toggleFilters = () => {
     setShowFilters(prev => !prev);
@@ -88,6 +99,13 @@ function ListingsContent() {
 
 // Page component with data fetching
 export default function ListingsPage({ initialData }) {
+  console.log('ListingsPage rendered with initialData:', {
+    hasInitialData: !!initialData,
+    listingsCount: initialData?.listings?.length || 0,
+    firstListing: initialData?.listings?.[0]?.title || 'No listings',
+    meta: initialData?.meta
+  });
+
   return (
     <>
       <Head>
@@ -108,6 +126,8 @@ export default function ListingsPage({ initialData }) {
 
 // Server-side data fetching for initial render
 export async function getServerSideProps({ query }) {
+  console.log('getServerSideProps called with query:', query);
+  
   try {
     // Extract filters from query params
     const { search, city, propertyType, listingType, minPrice, maxPrice, page = 1 } = query;
@@ -120,29 +140,41 @@ export async function getServerSideProps({ query }) {
       ...(maxPrice && { maxPrice })
     };
     
-    // Fetch initial data server-side to prevent hydration mismatch
-    const result = await getPublicListings(filters, parseInt(page) || 1, 12);
+    console.log('getServerSideProps filters:', filters);
+      // Fetch initial data server-side to prevent hydration mismatch
+    const result = await getPublicListingsServerSide(filters, parseInt(page) || 1, 12);
+    
+    console.log('getServerSideProps result:', {
+      success: result.success,
+      listingsCount: result.listings?.length || 0,
+      firstListing: result.listings?.[0]?.title || 'No listings',
+      pagination: result.pagination
+    });
     
     // Check if we got valid data
     const validListings = Array.isArray(result.listings);
     const validPagination = typeof result.pagination === 'object';
     
+    const initialData = {
+      listings: validListings ? result.listings : [],
+      meta: validPagination ? {
+        page: result.pagination.currentPage || 1,
+        pages: result.pagination.totalPages || 1,
+        total: result.pagination.total || 0,
+        limit: result.pagination.limit || 12
+      } : {
+        page: 1,
+        pages: 1,
+        total: 0,
+        limit: 12
+      }
+    };
+    
+    console.log('getServerSideProps returning initialData:', initialData);
+    
     return {
       props: {
-        initialData: {
-          listings: validListings ? result.listings : [],
-          meta: validPagination ? {
-            page: result.pagination.currentPage || 1,
-            pages: result.pagination.totalPages || 1,
-            total: result.pagination.total || 0,
-            limit: result.pagination.limit || 12
-          } : {
-            page: 1,
-            pages: 1,
-            total: 0,
-            limit: 12
-          }
-        }
+        initialData
       }
     };
   } catch (error) {

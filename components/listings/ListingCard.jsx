@@ -1,5 +1,6 @@
 import React, { memo, useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import PropTypes from "prop-types";
 import { useInView } from "react-intersection-observer";
 // Standard import path for Feather icons
@@ -30,9 +31,12 @@ const FALLBACK_IMAGE_DATA = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 // Global image error tracking to identify problematic images across the site
 const problematicImages = new Set();
 
-// Enhanced image URL utility with stricter error handling and guaranteed fallbacks
+// Enhanced image URL utility for Firebase Storage with fallback handling
 const getImageUrl = (imagePath, fallbackIndex = 0) => {
-  if (!imagePath) return FALLBACK_IMAGE_DATA;
+  // Ensure imagePath is a string or return fallback
+  if (!imagePath || typeof imagePath !== 'string') {
+    return FALLBACK_IMAGE_DATA;
+  }
 
   // Check if this image was previously problematic
   if (problematicImages.has(imagePath) && fallbackIndex === 0) {
@@ -40,36 +44,26 @@ const getImageUrl = (imagePath, fallbackIndex = 0) => {
     return imagePath; // Skip transformation for known problematic images
   }
 
-  // Vercel Blob base URL from environment variable
-  const baseUrl = process.env.NEXT_PUBLIC_BLOB_BASE_URL?.trim();
-  if (!baseUrl) {
-    console.warn('NEXT_PUBLIC_BLOB_BASE_URL is not configured');
-    return imagePath || FALLBACK_IMAGE_DATA; // Return direct path as fallback
-  }
-
   try {
-    // Handle already formed URLs vs paths
-    if (imagePath.startsWith('http')) {
-      // Already a full URL - use directly to avoid double-transformation
+    // Handle already formed URLs (Firebase Storage URLs or data URLs)
+    if (imagePath.startsWith('http') || imagePath.startsWith('data:')) {
+      // Already a full URL - use directly
       return imagePath;
     }
     
-    // Ensure proper encoding of the path
-    const encodedPath = encodeURIComponent(imagePath.trim());
+    // If it's a relative path, treat it as a direct image URL or fallback
+    // Since we're using Firebase Storage, images should already be full URLs from getDownloadURL()
+    // If we get a path, it might be a legacy reference or placeholder
+    if (imagePath.startsWith('/')) {
+      // Local static image (placeholder, etc.)
+      return imagePath;
+    }
     
-    // Add cache-busting for problematic images that might be cached incorrectly
-    const cacheBuster = fallbackIndex > 0 ? `&_cb=${Date.now()}-${fallbackIndex}` : '';
-    
-    const params = new URLSearchParams({
-      w: '800',
-      h: '600',
-      q: fallbackIndex > 0 ? '65' : '80', // Lower quality on retries for faster loading
-      f: 'webp'
-    });
-    
-    return `${baseUrl}/${encodedPath}?${params.toString()}${cacheBuster}`;
+    // If it's not a full URL and not a local path, it might be a Firebase path
+    // For now, return as-is and let error handling catch any issues
+    return imagePath;
   } catch (err) {
-    console.error('Error constructing image URL:', err);
+    console.error('Error processing image URL:', err);
     
     // Return the original path if transformation fails or fallback to placeholder
     return imagePath || FALLBACK_IMAGE_DATA;
@@ -90,8 +84,7 @@ const getFallbackImageUrl = (images = [], currentIndex = 0) => {
 };
 
 // Define component with React.memo for performance
-// Simple function component definition
-function ListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
+const ListingCard = memo(function ListingCard({ listing, onClick, preloadImages = false, size = "default" }) {
   const [imageError, setImageError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [retryAttempt, setRetryAttempt] = useState(0);
@@ -289,8 +282,9 @@ function ListingCard({ listing, onClick, preloadImages = false, size = "default"
       case "small": return "text-sm";
       case "large": return ""; 
       default: return "";
-    }
-  }, [size]);  return (
+    }  }, [size]);
+
+  return (
     <Link 
       href={`/listings/${_id}`} 
       className={`block h-full bg-white rounded-lg shadow-sm overflow-hidden transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-blue-500 ${cardStyles}`}
@@ -370,8 +364,7 @@ function ListingCard({ listing, onClick, preloadImages = false, size = "default"
             itemProp="name"
           >
             {title}
-          </h3>
-          <div className="flex items-center text-gray-600 text-sm mb-3 mt-2">
+          </h3>          <div className="flex items-center text-gray-600 text-sm mb-3 mt-2">
             <FiMapPin
               size={14}
               className="mr-1 flex-shrink-0"
@@ -409,11 +402,13 @@ function ListingCard({ listing, onClick, preloadImages = false, size = "default"
                 <FiSquare className="mr-1" aria-hidden="true" />
                 <span>{squareFeet.toLocaleString()} ft²</span>
               </div>
-            )}          </div>
+            )}
+          </div>
         </div>
       </article>
-    </Link>  );
-}
+    </Link>
+  );
+});
 
 // Add prop validation
 ListingCard.propTypes = {
@@ -451,5 +446,5 @@ ListingCard.defaultProps = {
 // Add displayName for better debugging
 ListingCard.displayName = 'ListingCard';
 
-// Export memoized version
-export default memo(ListingCard);
+// Export the component
+export default ListingCard;

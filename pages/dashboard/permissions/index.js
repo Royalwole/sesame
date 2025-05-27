@@ -1,5 +1,4 @@
 import React from "react";
-import { Container, Heading, Box } from "@chakra-ui/react";
 import PermissionPortal from "../../../components/admin/permissions/PermissionPortal";
 import DashboardLayout from "../../../components/layout/DashboardLayout";
 import { withAuth } from "../../../lib/withAuth";
@@ -13,15 +12,13 @@ import { withAuth } from "../../../lib/withAuth";
 function PermissionsPage() {
   return (
     <DashboardLayout>
-      <Container maxW="container.xl" py={6}>
-        <Box mb={6}>
-          <Heading as="h1" size="xl">
-            My Permissions
-          </Heading>
-        </Box>
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">My Permissions</h1>
+        </div>
 
         <PermissionPortal />
-      </Container>
+      </div>
     </DashboardLayout>
   );
 }

@@ -1,606 +1,371 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Button,
-  Heading,
-  Text,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  Badge,
-  Flex,
-  Input,
-  FormControl,
-  FormLabel,
-  Textarea,
-  Select,
-  Stack,
-  IconButton,
-  useToast,
-  useDisclosure,
-  Spinner,
-  Alert,
-  AlertIcon,
-  Tabs,
-  TabList,
-  Tab,
-  TabPanel,
-  TabPanels,
-  Avatar,
-  Tooltip,
-  HStack,
-  VStack,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  Divider,
-  Tag,
-} from '@chakra-ui/react';
-import { 
-  CheckIcon, 
-  CloseIcon, 
-  InfoIcon, 
-  TimeIcon,
-  SearchIcon,
-  ChevronUpIcon,
-  ChevronDownIcon,
-  ViewIcon,
-} from '@chakra-ui/icons';
+import { toast } from 'react-hot-toast';
+import { useAuth } from '../../../contexts/AuthContext';
 
 /**
  * Permission Request Review Component
  * 
- * Allows administrators to review, approve, or deny permission requests
- * submitted by users through the self-service permission portal.
+ * Allows administrators to review and approve/deny permission requests
  */
 function PermissionRequestReview() {
-  const toast = useToast();
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  
-  // State hooks
+  const { user } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRequest, setSelectedRequest] = useState(null);
-  const [reviewNotes, setReviewNotes] = useState('');
-  const [reviewAction, setReviewAction] = useState('');
-  const [processingAction, setProcessingAction] = useState(false);
-  const [tabIndex, setTabIndex] = useState(0);
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    hasNextPage: false,
-    hasPrevPage: false
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('pending');
+  const [reviewModal, setReviewModal] = useState(null);
+  const [reviewForm, setReviewForm] = useState({
+    action: 'approve',
+    comments: ''
   });
-  const [sortField, setSortField] = useState('createdAt');
-  const [sortDirection, setSortDirection] = useState('desc');
-  
-  // Fetches requests when component mounts or when tab changes
+  const [processing, setProcessing] = useState(false);
+
   useEffect(() => {
-    fetchRequests();
-  }, [tabIndex, pagination.currentPage]);
-  
-  // Fetch permission requests from API
-  const fetchRequests = async () => {
+    fetchPendingRequests();
+  }, [filter]);
+
+  const fetchPendingRequests = async () => {
     setLoading(true);
-    setError(null);
-    
     try {
-      const status = tabIndex === 0 ? 'pending' : tabIndex === 1 ? 'approved' : 'denied';
-      
-      const response = await fetch(`/api/admin/permission-requests?status=${status}&page=${pagination.currentPage}&sort=${sortField}&direction=${sortDirection}`);
+      const response = await fetch(`/api/admin/permissions/requests?status=${filter}`);
       const data = await response.json();
-      
-      if (!data.success) {
+
+      if (!response.ok) {
         throw new Error(data.error || 'Failed to fetch permission requests');
       }
-      
+
       setRequests(data.requests || []);
-      setPagination(data.pagination || {
-        currentPage: 1,
-        totalPages: 1,
-        hasNextPage: false,
-        hasPrevPage: false
-      });
-    } catch (err) {
-      console.error('Error fetching permission requests:', err);
-      setError(err.message);
+    } catch (error) {
+      setError(error.message);
+      toast.error('Failed to load permission requests');
     } finally {
       setLoading(false);
     }
   };
-  
-  // Handle sorting
-  const handleSort = (field) => {
-    if (field === sortField) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-    
-    // Refresh requests with new sorting
-    fetchRequests();
-  };
-  
-  const getSortIcon = (field) => {
-    if (sortField !== field) return null;
-    
-    return sortDirection === 'asc' 
-      ? <ChevronUpIcon ml={1} />
-      : <ChevronDownIcon ml={1} />;
-  };
-  
-  // Filter requests based on search query
-  const filteredRequests = requests.filter(request => {
-    if (!searchQuery) return true;
-    
-    const query = searchQuery.toLowerCase();
-    return (
-      (request.user?.name && request.user.name.toLowerCase().includes(query)) ||
-      (request.user?.email && request.user.email.toLowerCase().includes(query)) ||
-      (request.permission && request.permission.toLowerCase().includes(query)) ||
-      (request.justification && request.justification.toLowerCase().includes(query)) ||
-      (request.resourceId && request.resourceId.toLowerCase().includes(query))
-    );
-  });
-  
-  // Open request details modal
-  const viewRequestDetails = (request) => {
-    setSelectedRequest(request);
-    setReviewAction('');
-    setReviewNotes('');
-    onOpen();
-  };
-  
-  // Process permission request (approve or deny)
-  const processRequest = async () => {
-    if (!selectedRequest || !reviewAction) return;
-    
-    setProcessingAction(true);
-    
-    try {
-      const response = await fetch(`/api/admin/permission-requests/${selectedRequest._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: reviewAction,
-          notes: reviewNotes
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to process request');
-      }
-      
-      toast({
-        title: reviewAction === 'approve' ? 'Request Approved' : 'Request Denied',
-        description: `The permission request has been ${reviewAction === 'approve' ? 'approved' : 'denied'}.`,
-        status: reviewAction === 'approve' ? 'success' : 'info',
-        duration: 5000
-      });
-      
-      // Close modal and refresh requests
-      onClose();
-      fetchRequests();
-      
-    } catch (err) {
-      console.error('Error processing request:', err);
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to process the request',
-        status: 'error',
-        duration: 5000
-      });
-    } finally {
-      setProcessingAction(false);
-    }
-  };
-  
-  // Handle tab change
-  const handleTabChange = (index) => {
-    setTabIndex(index);
-    setPagination({
-      ...pagination,
-      currentPage: 1
+
+  // Open review modal
+  const openReviewModal = (request) => {
+    setReviewModal(request);
+    setReviewForm({
+      action: 'approve',
+      comments: ''
     });
   };
-  
-  // Get status color scheme for badges
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'yellow';
-      case 'approved': return 'green';
-      case 'denied': return 'red';
-      case 'canceled': return 'gray';
-      default: return 'gray';
+
+  // Close review modal
+  const closeReviewModal = () => {
+    setReviewModal(null);
+    setReviewForm({
+      action: 'approve',
+      comments: ''
+    });
+  };
+
+  // Handle review form changes
+  const handleReviewFormChange = (field, value) => {
+    setReviewForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Submit review decision
+  const handleSubmitReview = async () => {
+    if (!reviewModal) return;
+
+    setProcessing(true);
+    try {
+      const response = await fetch(`/api/admin/permissions/requests/${reviewModal.id}/review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: reviewForm.action,
+          comments: reviewForm.comments,
+          reviewedBy: user.id
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit review');
+      }
+
+      toast.success(`Request ${reviewForm.action === 'approve' ? 'approved' : 'denied'} successfully`);
+      
+      // Refresh the requests list
+      fetchPendingRequests();
+      closeReviewModal();
+      
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setProcessing(false);
     }
   };
-  
-  // Format date
+
+  // Format date for display
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString();
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
-  
-  // Handle pagination
-  const goToNextPage = () => {
-    if (pagination.hasNextPage) {
-      setPagination({
-        ...pagination,
-        currentPage: pagination.currentPage + 1
-      });
+
+  // Get status badge classes
+  const getStatusBadgeClasses = (status) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'approved':
+        return 'bg-green-100 text-green-800';
+      case 'denied':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
-  
-  const goToPreviousPage = () => {
-    if (pagination.hasPrevPage) {
-      setPagination({
-        ...pagination,
-        currentPage: pagination.currentPage - 1
-      });
-    }
+
+  // Get priority badge classes
+  const getPriorityClasses = (isEmergency) => {
+    return isEmergency 
+      ? 'bg-red-100 text-red-800'
+      : 'bg-blue-100 text-blue-800';
   };
-  
-  // Loading state
-  if (loading && !requests.length) {
+
+  if (loading) {
     return (
-      <Box textAlign="center" py={10}>
-        <Spinner size="xl" />
-        <Text mt={4}>Loading permission requests...</Text>
-      </Box>
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="flex justify-center items-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="ml-3 text-gray-600">Loading permission requests...</span>
+        </div>
+      </div>
     );
   }
-  
-  // Error state
+
   if (error) {
     return (
-      <Alert status="error">
-        <AlertIcon />
-        {error}
-      </Alert>
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            {error}
+          </div>
+        </div>
+      </div>
     );
   }
-  
+
   return (
-    <Box>
-      <Flex justify="space-between" align="center" mb={6}>
-        <Heading size="lg">Permission Requests</Heading>
-      </Flex>
-      
-      <Tabs isLazy index={tabIndex} onChange={handleTabChange} colorScheme="blue">
-        <TabList mb={4}>
-          <Tab>Pending</Tab>
-          <Tab>Approved</Tab>
-          <Tab>Denied</Tab>
-        </TabList>
-        
-        <Box mb={4}>
-          <Input
-            placeholder="Search requests..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            maxW="400px"
-            leftIcon={<SearchIcon />}
-            aria-label="Search permission requests"
-          />
-        </Box>
-        
-        <TabPanels>
-          {/* All tabs have similar content with different data */}
-          {[0, 1, 2].map((index) => (
-            <TabPanel key={index} p={0}>
-              {filteredRequests.length === 0 ? (
-                <Alert status="info">
-                  <AlertIcon />
-                  No {index === 0 ? 'pending' : index === 1 ? 'approved' : 'denied'} permission requests found.
-                </Alert>
-              ) : (
-                <>
-                  <Table variant="simple">
-                    <Thead>
-                      <Tr>
-                        <Th 
-                          cursor="pointer"
-                          onClick={() => handleSort('createdAt')}
-                        >
-                          <Flex align="center">
-                            Date {getSortIcon('createdAt')}
-                          </Flex>
-                        </Th>
-                        <Th 
-                          cursor="pointer"
-                          onClick={() => handleSort('user.name')}
-                        >
-                          <Flex align="center">
-                            User {getSortIcon('user.name')}
-                          </Flex>
-                        </Th>
-                        <Th>Requested Permission</Th>
-                        <Th>Type</Th>
-                        <Th>Duration</Th>
-                        <Th width="100px">Actions</Th>
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {filteredRequests.map((request) => (
-                        <Tr key={request._id}>
-                          <Td>
-                            <Tooltip label={formatDate(request.createdAt)}>
-                              <HStack>
-                                <TimeIcon color="gray.500" />
-                                <Text>{new Date(request.createdAt).toLocaleDateString()}</Text>
-                              </HStack>
-                            </Tooltip>
-                          </Td>
-                          <Td>
-                            <HStack>
-                              <Avatar 
-                                size="sm" 
-                                name={request.user?.name || 'User'} 
-                                src={request.user?.profileImage}
-                              />
-                              <VStack align="start" spacing={0}>
-                                <Text fontWeight="medium">{request.user?.name || 'Unknown User'}</Text>
-                                <Text fontSize="xs" color="gray.500">{request.user?.email}</Text>
-                              </VStack>
-                            </HStack>
-                          </Td>
-                          <Td fontFamily="mono" fontSize="sm">
-                            {request.permission || (request.bundleId && (
-                              <HStack>
-                                <Tag colorScheme="purple">Bundle</Tag>
-                                <Text>{request.bundle?.name || 'Permission Bundle'}</Text>
-                              </HStack>
-                            ))}
-                          </Td>
-                          <Td>
-                            {request.resourceId ? (
-                              <Badge colorScheme="purple">Resource-specific</Badge>
-                            ) : (
-                              <Badge colorScheme="blue">Global</Badge>
-                            )}
-                          </Td>
-                          <Td>
-                            {request.requestedDuration === 'permanent' ? (
-                              <Badge colorScheme="blue">Permanent</Badge>
-                            ) : (
-                              <Tooltip label={`Until ${formatDate(request.requestedExpiration)}`}>
-                                <Badge colorScheme="green">Temporary</Badge>
-                              </Tooltip>
-                            )}
-                          </Td>
-                          <Td>
-                            {index === 0 ? (
-                              <HStack>
-                                <IconButton
-                                  icon={<ViewIcon />}
-                                  size="sm"
-                                  aria-label="View request details"
-                                  onClick={() => viewRequestDetails(request)}
-                                />
-                              </HStack>
-                            ) : (
-                              <IconButton
-                                icon={<InfoIcon />}
-                                size="sm"
-                                aria-label="View request details"
-                                onClick={() => viewRequestDetails(request)}
-                              />
-                            )}
-                          </Td>
-                        </Tr>
-                      ))}
-                    </Tbody>
-                  </Table>
-                  
-                  {/* Pagination */}
-                  {pagination.totalPages > 1 && (
-                    <Flex justify="center" mt={4}>
-                      <Button 
-                        isDisabled={!pagination.hasPrevPage}
-                        onClick={goToPreviousPage}
-                        mr={2}
-                      >
-                        Previous
-                      </Button>
-                      <Text alignSelf="center" mx={4}>
-                        Page {pagination.currentPage} of {pagination.totalPages}
-                      </Text>
-                      <Button 
-                        isDisabled={!pagination.hasNextPage}
-                        onClick={goToNextPage}
-                        ml={2}
-                      >
-                        Next
-                      </Button>
-                    </Flex>
+    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold">Permission Request Review</h2>
+        <div className="flex items-center space-x-2">
+          <label className="text-sm font-medium text-gray-700">Filter:</label>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="pending">Pending Review</option>
+            <option value="approved">Approved</option>
+            <option value="denied">Denied</option>
+            <option value="all">All Requests</option>
+          </select>
+        </div>
+      </div>
+
+      {requests.length === 0 ? (
+        <div className="text-center py-8">
+          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No requests found</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            {filter === 'pending' 
+              ? "No pending permission requests to review."
+              : `No ${filter} requests found.`
+            }
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {requests.map((request) => (
+            <div key={request.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex items-center space-x-2">
+                  <h3 className="font-medium text-gray-900">
+                    {request.requestType === 'permission' 
+                      ? request.permissionName || request.permission
+                      : request.bundleName || `Bundle ${request.bundleId}`
+                    }
+                  </h3>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeClasses(request.status)}`}>
+                    {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                  </span>
+                  {request.emergencyAccess && (
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPriorityClasses(true)}`}>
+                      Emergency
+                    </span>
                   )}
-                </>
-              )}
-            </TabPanel>
-          ))}
-        </TabPanels>
-      </Tabs>
-      
-      {/* Request Details Modal */}
-      {selectedRequest && (
-        <Modal isOpen={isOpen} onClose={onClose} size="lg">
-          <ModalOverlay />
-          <ModalContent>
-            <ModalHeader>Permission Request Details</ModalHeader>
-            <ModalCloseButton />
-            <ModalBody>
-              <VStack align="stretch" spacing={4}>
-                <HStack>
-                  <Avatar 
-                    size="md" 
-                    name={selectedRequest.user?.name || 'User'} 
-                    src={selectedRequest.user?.profileImage}
-                  />
-                  <VStack align="start" spacing={0}>
-                    <Text fontWeight="bold">{selectedRequest.user?.name}</Text>
-                    <Text fontSize="sm">{selectedRequest.user?.email}</Text>
-                  </VStack>
-                  <Spacer />
-                  <Badge colorScheme={getStatusColor(selectedRequest.status)} fontSize="md" p={1}>
-                    {selectedRequest.status.toUpperCase()}
-                  </Badge>
-                </HStack>
-                
-                <Divider />
-                
-                <Box>
-                  <Text fontWeight="bold" mb={1}>Requested Permission</Text>
-                  {selectedRequest.permission ? (
-                    <Text fontFamily="mono">{selectedRequest.permission}</Text>
-                  ) : selectedRequest.bundleId ? (
-                    <VStack align="start">
-                      <HStack>
-                        <Tag colorScheme="purple">Bundle</Tag>
-                        <Text fontWeight="medium">{selectedRequest.bundle?.name || 'Permission Bundle'}</Text>
-                      </HStack>
-                      {selectedRequest.bundle?.description && (
-                        <Text fontSize="sm" color="gray.600">
-                          {selectedRequest.bundle.description}
-                        </Text>
-                      )}
-                    </VStack>
-                  ) : (
-                    <Text>Unknown permission request</Text>
-                  )}
-                </Box>
-                
-                {selectedRequest.resourceId && (
-                  <Box>
-                    <Text fontWeight="bold" mb={1}>Resource Specifics</Text>
-                    <HStack>
-                      <Badge colorScheme="purple">Resource</Badge>
-                      <Text>{selectedRequest.resourceType || 'Resource'}</Text>
-                      <Text fontFamily="mono" fontSize="sm">{selectedRequest.resourceId}</Text>
-                    </HStack>
-                  </Box>
-                )}
-                
-                <Box>
-                  <Text fontWeight="bold" mb={1}>Duration</Text>
-                  {selectedRequest.requestedDuration === 'permanent' ? (
-                    <Badge colorScheme="blue">Permanent</Badge>
-                  ) : (
-                    <VStack align="start">
-                      <Badge colorScheme="green">Temporary</Badge>
-                      <Text fontSize="sm">
-                        Expires: {formatDate(selectedRequest.requestedExpiration)}
-                      </Text>
-                    </VStack>
-                  )}
-                </Box>
-                
-                <Box>
-                  <Text fontWeight="bold" mb={1}>Justification</Text>
-                  <Alert status="info" variant="left-accent">
-                    <Text>{selectedRequest.justification}</Text>
-                  </Alert>
-                </Box>
-                
-                <Box>
-                  <Text fontWeight="bold" mb={1}>Request Timeline</Text>
-                  <VStack align="start" spacing={1}>
-                    <HStack>
-                      <TimeIcon color="blue.500" />
-                      <Text fontSize="sm">
-                        Submitted: {formatDate(selectedRequest.createdAt)}
-                      </Text>
-                    </HStack>
-                    
-                    {selectedRequest.status !== 'pending' && selectedRequest.updatedAt && (
-                      <HStack>
-                        <TimeIcon color="green.500" />
-                        <Text fontSize="sm">
-                          {selectedRequest.status === 'approved' ? 'Approved' : 'Denied'}: 
-                          {formatDate(selectedRequest.updatedAt)}
-                        </Text>
-                      </HStack>
-                    )}
-                  </VStack>
-                </Box>
-                
-                {selectedRequest.reviewNotes && (
-                  <Box>
-                    <Text fontWeight="bold" mb={1}>Review Notes</Text>
-                    <Alert 
-                      status={selectedRequest.status === 'approved' ? 'success' : 'warning'} 
-                      variant="left-accent"
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-500">
+                    {formatDate(request.requestedAt)}
+                  </span>
+                  {request.status === 'pending' && (
+                    <button
+                      onClick={() => openReviewModal(request)}
+                      className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
-                      <Text>{selectedRequest.reviewNotes}</Text>
-                    </Alert>
-                  </Box>
-                )}
-                
-                {/* Show review form only for pending requests */}
-                {selectedRequest.status === 'pending' && (
-                  <>
-                    <Divider />
-                    
-                    <FormControl isRequired>
-                      <FormLabel>Review Decision</FormLabel>
-                      <Select 
-                        placeholder="Select action" 
-                        value={reviewAction} 
-                        onChange={(e) => setReviewAction(e.target.value)}
-                      >
-                        <option value="approve">Approve Request</option>
-                        <option value="deny">Deny Request</option>
-                      </Select>
-                    </FormControl>
-                    
-                    <FormControl>
-                      <FormLabel>Review Notes</FormLabel>
-                      <Textarea 
-                        value={reviewNotes} 
-                        onChange={(e) => setReviewNotes(e.target.value)}
-                        placeholder="Provide any notes or explanations for your decision..."
-                      />
-                    </FormControl>
-                  </>
-                )}
-              </VStack>
-            </ModalBody>
-            <ModalFooter>
-              <Button mr={3} onClick={onClose}>
-                Close
-              </Button>
-              {selectedRequest.status === 'pending' && (
-                <Button 
-                  colorScheme={reviewAction === 'approve' ? 'green' : 'red'}
-                  leftIcon={reviewAction === 'approve' ? <CheckIcon /> : <CloseIcon />}
-                  onClick={processRequest}
-                  isLoading={processingAction}
-                  isDisabled={!reviewAction}
-                >
-                  {reviewAction === 'approve' ? 'Approve' : reviewAction === 'deny' ? 'Deny' : 'Select Action'}
-                </Button>
+                      Review
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-3">
+                <div>
+                  <p><strong>Requester:</strong> {request.userEmail || request.userId}</p>
+                  <p><strong>Type:</strong> {request.requestType === 'permission' ? 'Individual Permission' : 'Permission Bundle'}</p>
+                </div>
+                <div>
+                  <p><strong>Duration:</strong> {request.duration === 'permanent' ? 'Permanent' : `Temporary (${request.temporaryDays} days)`}</p>
+                  {request.emergencyAccess && <p className="text-red-600"><strong>Priority:</strong> Emergency Access</p>}
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600 mb-3">
+                <p><strong>Justification:</strong></p>
+                <p className="mt-1 pl-2 border-l-2 border-gray-200">{request.justification}</p>
+              </div>
+
+              {request.businessImpact && (
+                <div className="text-sm text-gray-600 mb-3">
+                  <p><strong>Business Impact:</strong></p>
+                  <p className="mt-1 pl-2 border-l-2 border-red-200">{request.businessImpact}</p>
+                </div>
               )}
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+
+              {request.reviewedAt && (
+                <div className="text-sm text-gray-600 border-t pt-3">
+                  <p><strong>Reviewed:</strong> {formatDate(request.reviewedAt)} by {request.reviewedBy}</p>
+                  {request.reviewComments && (
+                    <div className="mt-1">
+                      <p><strong>Review Comments:</strong></p>
+                      <p className="pl-2 border-l-2 border-blue-200">{request.reviewComments}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
-    </Box>
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Review Permission Request</h3>
+              <button
+                className="text-gray-400 hover:text-gray-600"
+                onClick={closeReviewModal}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <h4 className="font-medium mb-2">Request Details:</h4>
+              <div className="bg-gray-50 p-3 rounded text-sm">
+                <p><strong>Permission:</strong> {reviewModal.requestType === 'permission' ? reviewModal.permission : `Bundle ${reviewModal.bundleId}`}</p>
+                <p><strong>Requester:</strong> {reviewModal.userEmail || reviewModal.userId}</p>
+                <p><strong>Duration:</strong> {reviewModal.duration}</p>
+                {reviewModal.emergencyAccess && <p className="text-red-600"><strong>Emergency Access Required</strong></p>}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Decision</label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="action"
+                    value="approve"
+                    checked={reviewForm.action === 'approve'}
+                    onChange={(e) => handleReviewFormChange('action', e.target.value)}
+                    className="mr-2"
+                  />
+                  <span className="text-sm text-green-700">Approve Request</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="action"
+                    value="deny"
+                    checked={reviewForm.action === 'deny'}
+                    onChange={(e) => handleReviewFormChange('action', e.target.value)}
+                    className="mr-2"
+                  />
+                  <span className="text-sm text-red-700">Deny Request</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Comments {reviewForm.action === 'deny' && <span className="text-red-500">*</span>}
+              </label>
+              <textarea
+                value={reviewForm.comments}
+                onChange={(e) => handleReviewFormChange('comments', e.target.value)}
+                rows="3"
+                placeholder={reviewForm.action === 'approve' 
+                  ? "Optional: Add any comments about the approval..."
+                  : "Required: Explain why this request is being denied..."
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button 
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                onClick={closeReviewModal}
+                disabled={processing}
+              >
+                Cancel
+              </button>
+              <button 
+                className={`px-4 py-2 text-sm font-medium text-white border border-transparent rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 ${
+                  reviewForm.action === 'approve' 
+                    ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
+                    : 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
+                }`}
+                onClick={handleSubmitReview}
+                disabled={processing || (reviewForm.action === 'deny' && !reviewForm.comments.trim())}
+              >
+                {processing ? 'Processing...' : (reviewForm.action === 'approve' ? 'Approve' : 'Deny')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
-
-// Helper component for layout
-const Spacer = () => <Box flex="1" />;
 
 export default PermissionRequestReview;
